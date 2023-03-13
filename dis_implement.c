@@ -9,8 +9,6 @@
 #include "dis_internal_def.h"
 #include "pyramid.h"
 
-
-#define INPUT_IMG_PREFIX    "/home/icework/adas_alg_ref/adas_test/data/structure_from_motion/input"
 #define DEBUG_IMG_PREFIX    "/home/icework/adas_alg_ref/dof_dis/data/output"
 
 #define MAX_F32(x, y)    (x) < (y) ? (y) : (x)
@@ -326,7 +324,7 @@ static void  build_hessian_inv_pyr(DIS_PYRAMID const*  grad_xy_integral_pyramid,
 static float calc_patch_ssd(unsigned char const* ref,
                             unsigned char const* track,
                             int const*           ref_xy,
-                            float*               flow_xy,
+                            float const*         flow_xy,
                             unsigned int         patch_size,
                             int                  line_size,
                             int                  track_max_x,
@@ -452,9 +450,10 @@ static int iterate_dis(unsigned char const*   ref_img,
                        int                    hessian_line_size,
                        int                    iterate_num,
                        int                    patch_size,
+                       int                    stride_size,
                        int                    track_max_x,
                        int                    track_max_y){
-  int   start_xy[2] = { stride_x * patch_size, stride_y * patch_size };
+  int   start_xy[2] = { stride_x * stride_size, stride_y * stride_size };
   float cur_u[2]    = { patch_stride[0], patch_stride[1] };
   float invH11      = hessian_inv[stride_y * hessian_line_size + 4 * stride_x];
   float invH12      = hessian_inv[stride_y * hessian_line_size + 4 * stride_x + 1];
@@ -508,10 +507,10 @@ static int iterate_dis(unsigned char const*   ref_img,
 static int patch_inv_search(DIS_INSTANCE*  dis,
                             unsigned int   level,
                             int            internal_iter_num){
-  unsigned int    level_iter     = 0;
-  int             dir[2]         = { 1, -1 };
-  int             i              = 0;
-  int             j              = 0;
+  unsigned int    level_iter             = 0;
+  int             dir[2]                 = { 1, -1 };
+  int             i                      = 0;
+  int             j                      = 0;
   DIS_PYRAMID*    patch_stride_pyr       = &(dis->patch_stride_flow_pyramid); 
   int             patch_stride_w         = patch_stride_pyr->width[level];
   int             patch_stride_h         = patch_stride_pyr->height[level];
@@ -528,12 +527,12 @@ static int patch_inv_search(DIS_INSTANCE*  dis,
                                             dis->ref_grad_xy_pyramid.pad * dis->ref_grad_xy_pyramid.line_size[level] +
                                             4 * dis->ref_grad_xy_pyramid.pad);
   int             ref_grad_xy_line_size  = dis->ref_grad_xy_pyramid.line_size[level] >> 2;
-  float*          init_flow_ptr          = level < (dis->pyr_level - 1) ? 
-                                           (float*)(dis->init_flow_pyramid.buf[level]) :
+  float const*    init_flow_ptr          = level < (dis->pyr_level - 1) ? 
+                                           (float const*)(dis->init_flow_pyramid.buf[level]) :
                                            NULL;
-  unsigned int    init_flow_line_size    = dis->init_flow_pyramid.line_size[level] >> 2;
-  unsigned int    patch_size             = dis->patch_size;
-  unsigned int    patch_stride_size       = dis->patch_stride_size;
+  int             init_flow_line_size    = dis->init_flow_pyramid.line_size[level] >> 2;
+  int             patch_size             = dis->patch_size;
+  int             patch_stride_size      = dis->patch_stride_size;
   int const*      stride_grad_xy_integral      = (int const*)(dis->grad_xy_stride_integral_pyramid.buf[level] +
                                                               dis->grad_xy_stride_integral_pyramid.pad * dis->grad_xy_stride_integral_pyramid.line_size[level] +
                                                               8 * dis->grad_xy_stride_integral_pyramid.pad);
@@ -556,31 +555,40 @@ static int patch_inv_search(DIS_INSTANCE*  dis,
   flow_out_ptr  = flow_out_ptr + 
                   patch_stride_size * flow_out_line_size +
                   2 * patch_stride_size;
-  float* patch_stride_ptr0 = patch_stride_ptr;
-  float* flow_out_ptr0     = flow_out_ptr;
-  float* init_flow_ptr0    = init_flow_ptr;
+  float*       patch_stride_ptr0 = patch_stride_ptr;
+  float const* flow_out_ptr0     = flow_out_ptr;
+  float const* init_flow_ptr0    = init_flow_ptr;
   for(level_iter = 0 ; level_iter < 2 ; level_iter ++){
+    int start_i = 0;
+    int start_j = 0;
+    int ii      = 0;
+    int jj      = 0;
     if(1 == level_iter){
+      start_i          = patch_stride_h - 1;
+      start_j          = patch_stride_w - 1;
       patch_stride_ptr = patch_stride_ptr0 + 
-                         (patch_stride_h - 1) * patch_stride_line_size +
-                         2 * (patch_stride_w - 1);
-      //flow_out_ptr     = flow_out_ptr0  + ;
-      init_flow_ptr    = init_flow_ptr0;
+                         (patch_stride_h - 1) * patch_stride_line_size;
+      flow_out_ptr     = flow_out_ptr0 + 
+                         (patch_stride_h - 1) * patch_stride_size * flow_out_line_size;
+      init_flow_ptr    = init_flow_ptr0 + 
+                         (patch_stride_h - 1) * patch_stride_size * init_flow_line_size;
     }
+    ii = start_i;
+    jj = start_j;
     for(i = 0 ; i < patch_stride_h ; i ++){
       for(j = 0 ; j < patch_stride_w ; j ++){
         int   ref_xy[2]  = { 
-          j * patch_stride_size, 
-          i * patch_stride_size
+          jj * patch_stride_size, 
+          ii * patch_stride_size
         };
         if (0 == level_iter){
-          *((unsigned long long*)(patch_stride_ptr + 2 * j)) = 
+          *((unsigned long long*)(patch_stride_ptr + 2 * jj)) = 
           *((unsigned long long*)(flow_out_ptr + 2 * ref_xy[0]));
         }
         float min_ssd    = calc_patch_ssd(ref_img, 
                                           track_img, 
                                           ref_xy, 
-                                          patch_stride_ptr + 2 * j, 
+                                          patch_stride_ptr + 2 * jj, 
                                           patch_size, 
                                           gray_img_line_size,
                                           gray_x_max,
@@ -590,41 +598,41 @@ static int patch_inv_search(DIS_INSTANCE*  dis,
           cur_ssd = calc_patch_ssd(ref_img, 
                                    track_img,
                                    ref_xy,
-                                   init_flow_ptr + 2 * (j * patch_stride_size),
+                                   init_flow_ptr + 2 * (jj * patch_stride_size),
                                    patch_size,
                                    gray_img_line_size,
                                    gray_x_max,
                                    gray_y_max);
           if(cur_ssd < min_ssd){
-            *((unsigned long long*)(patch_stride_ptr + 2 * j)) = 
-            *((unsigned long long*)(init_flow_ptr + 2 * (j * patch_stride_size)));
+            *((unsigned long long*)(patch_stride_ptr + 2 * jj)) = 
+            *((unsigned long long*)(init_flow_ptr + 2 * (jj * patch_stride_size)));
             min_ssd = cur_ssd;
           }
         }
         cur_ssd = calc_patch_ssd(ref_img, 
                                  track_img,
                                  ref_xy,
-                                 patch_stride_ptr + 2 * (j - dir[level_iter]),
+                                 patch_stride_ptr + 2 * (jj - dir[level_iter]),
                                  patch_size,
                                  gray_img_line_size,
                                  gray_x_max,
                                  gray_y_max);
         if(cur_ssd < min_ssd){
-          *((unsigned long long*)(patch_stride_ptr + 2 * j)) = 
-          *((unsigned long long*)(patch_stride_ptr + 2 * (j - dir[level_iter])));
+          *((unsigned long long*)(patch_stride_ptr + 2 * jj)) = 
+          *((unsigned long long*)(patch_stride_ptr + 2 * (jj - dir[level_iter])));
           min_ssd = cur_ssd;
         }
         cur_ssd = calc_patch_ssd(ref_img, 
                                  track_img,
                                  ref_xy,
-                                 patch_stride_ptr + 2 * j - dir[level_iter] * patch_stride_line_size,
+                                 patch_stride_ptr + 2 * jj - dir[level_iter] * patch_stride_line_size,
                                  patch_size,
                                  gray_img_line_size,
                                  gray_x_max,
                                  gray_y_max);
         if(cur_ssd < min_ssd){
-          *((unsigned long long*)(patch_stride_ptr + 2 * j)) = 
-          *((unsigned long long*)(patch_stride_ptr + 2 * j - dir[level_iter] * patch_stride_line_size));
+          *((unsigned long long*)(patch_stride_ptr + 2 * jj)) = 
+          *((unsigned long long*)(patch_stride_ptr + 2 * jj - dir[level_iter] * patch_stride_line_size));
           min_ssd = cur_ssd;
         }
         iterate_dis(ref_img,
@@ -632,20 +640,24 @@ static int patch_inv_search(DIS_INSTANCE*  dis,
                     gray_img_line_size,
                     ref_grad_xy,
                     ref_grad_xy_line_size,
-                    patch_stride_ptr + 2 * j,
-                    j, i,
+                    patch_stride_ptr + 2 * jj,
+                    jj, ii,
                     stride_grad_xy_integral,
                     stride_grad_xy_int_line_size,
                     hessian_inv,
                     hessian_inv_line_size,
                     internal_iter_num,
                     patch_size,
+                    patch_stride_size,
                     gray_x_max,
                     gray_y_max);
+        jj += dir[level_iter];
       }
       patch_stride_ptr += dir[level_iter] * patch_stride_line_size;
       flow_out_ptr     += dir[level_iter] * patch_stride_size * flow_out_line_size;
       init_flow_ptr    += dir[level_iter] * patch_stride_size * init_flow_line_size;
+      ii               += dir[level_iter];
+      jj                = start_j;
     }
   }
 
@@ -701,8 +713,8 @@ static int densification(DIS_INSTANCE*  dis,
     end_x   = w < stride_size ? w : stride_size;
     for(ii = start_y ; ii < end_y ; ii ++){
       for(jj = 0 ; jj < end_x ; jj ++){
-        dense_flow[ii * dense_line_size + 2 * jj]     = sparse_flow[sparse_h * sparse_line_size];
-        dense_flow[ii * dense_line_size + 2 * jj + 1] = sparse_flow[sparse_h * sparse_line_size + 1];
+        dense_flow[ii * dense_line_size + 2 * jj]     = sparse_flow[(sparse_h - 1) * sparse_line_size];
+        dense_flow[ii * dense_line_size + 2 * jj + 1] = sparse_flow[(sparse_h - 1) * sparse_line_size + 1];
       }
     }
 
@@ -711,8 +723,8 @@ static int densification(DIS_INSTANCE*  dis,
     end_x   = w;
     for(ii = start_y ; ii < end_y ; ii ++){
       for(jj = start_x ; jj < end_x ; jj ++){
-        dense_flow[ii * dense_line_size + 2 * jj]     = sparse_flow[sparse_h * sparse_line_size + 2 * (sparse_w - 1)];
-        dense_flow[ii * dense_line_size + 2 * jj + 1] = sparse_flow[sparse_h * sparse_line_size + 2 * (sparse_w - 1) + 1];
+        dense_flow[ii * dense_line_size + 2 * jj]     = sparse_flow[(sparse_h - 1) * sparse_line_size + 2 * (sparse_w - 1)];
+        dense_flow[ii * dense_line_size + 2 * jj + 1] = sparse_flow[(sparse_h - 1) * sparse_line_size + 2 * (sparse_w - 1) + 1];
       }
     }
   }
@@ -1184,8 +1196,8 @@ int     dis_dof(void*                  dis_instance,
   memset(dis->dense_flow_pyramid.mem,
          0,
          dis->dense_flow_pyramid.total_buf_size);
-  unsigned int cur_level        = 0;
-  unsigned int top_level        = dis->ref_gray_pyramid.level - 1;
+  int          cur_level              = 0;
+  int          top_level              = dis->ref_gray_pyramid.level - 1;
   unsigned int kInvSearchInternalIter = 8;
   for(cur_level = top_level; cur_level >= 0 ; cur_level --){
     patch_inv_search(dis, cur_level, kInvSearchInternalIter);

@@ -6,9 +6,9 @@
 #include <bmp.h>
 #include "dis_implement.h"
 
-#define INPUT_IMG_PREFIX    "/home/icework/adas_alg_ref/dis_dof/data/input"
+#define INPUT_IMG_PREFIX    "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/input"
 #define INPUT_IMG_CNT       6
-#define DEBUG_IMG_PREFIX    "/home/icework/adas_alg_ref/dis_dof/data/output"
+#define DEBUG_IMG_PREFIX    "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output"
 
 int main(int argc, char *argv[]){
   int  i = 0;

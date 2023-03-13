@@ -3,7 +3,8 @@
 
 #include <dis_types.h>
 
-int draw_dof_match(char const*           image_file_name,
+int draw_dof_match(char const*           match_file_name,
+                   char const*           flow_file_name,
                    unsigned char const*  ref_img,
                    unsigned int          width,
                    unsigned int          height,

@@ -147,7 +147,7 @@ int  build_gray_pyramid(unsigned char const*  src_image,
     cur_height = pyramid->raw_height >> (l + 1);
   }
 
-  if(pyramid->pad > 0 && 0 != padding_zero){
+  if(pyramid->pad > 0 && 0 == padding_zero){
     unsigned int  bytes_per_pixel = (kPyrPixelDepth[pyramid->pixel_type] >> 3);
     for(l = 0 ; l < pyramid->level ; l ++){
       unsigned int    bytes_per_line = bytes_per_pixel * pyramid->width[l];

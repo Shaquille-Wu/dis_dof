@@ -6,7 +6,7 @@
 #include <string.h>
 #include <math.h>
 
-int draw_line_rgb32(unsigned int*  img,
+int draw_line_rgb32(unsigned int*  match_img,
                     int            width,
                     int            height,
                     int            line_size,
@@ -34,7 +34,7 @@ int draw_line_rgb32(unsigned int*  img,
             if(j < 0 || j >= width){
               continue;
             }
-            img[i * line_size + j] = color;
+            match_img[i * line_size + j] = color;
           }
         }
       }
@@ -47,7 +47,7 @@ int draw_line_rgb32(unsigned int*  img,
           if(j < 0 || j >= width){
             continue;
           }
-          img[i * line_size + j] = color;
+          match_img[i * line_size + j] = color;
         }
       }
     }else if(0 == delta_y){
@@ -59,7 +59,7 @@ int draw_line_rgb32(unsigned int*  img,
           if(j < 0 || j >= width){
             continue;
           }
-          img[i * line_size + j] = color;
+          match_img[i * line_size + j] = color;
         }
       }
     }
@@ -79,7 +79,7 @@ int draw_line_rgb32(unsigned int*  img,
             if(k < 0 || k >= width){
               continue;
             }
-            img[j * line_size + k] = color;
+            match_img[j * line_size + k] = color;
           }
         }
       }
@@ -96,7 +96,7 @@ int draw_line_rgb32(unsigned int*  img,
             if(k < 0 || k >= width){
               continue;
             }
-            img[j * line_size + k] = color;
+            match_img[j * line_size + k] = color;
           }
         }
       }
@@ -105,7 +105,8 @@ int draw_line_rgb32(unsigned int*  img,
   return 0;
 }
 
-int draw_dof_match(char const*           image_file_name,
+int draw_dof_match(char const*           match_file_name,
+                   char const*           flow_file_name,
                    unsigned char const*  ref_img,
                    unsigned int          width,
                    unsigned int          height,
@@ -122,8 +123,11 @@ int draw_dof_match(char const*           image_file_name,
     match_height = 2 * height;
   }
   unsigned int    match_line_size = IMG_LINE_ALIGNED(4 * match_width);
+  unsigned int    flow_line_size  = IMG_LINE_ALIGNED(4 * width);
   unsigned char*  match_image     = (unsigned char*)alloc_mem_align(match_line_size * match_height);
+  unsigned char*  flow_image      = (unsigned char*)alloc_mem_align(flow_line_size * height);
   memset(match_image, 0, match_line_size * match_height);
+  memset(flow_image,  0, flow_line_size  * height);
   static const unsigned int  kColors[] = {
     0x000000FF,
     0x0000FF00,
@@ -158,6 +162,29 @@ int draw_dof_match(char const*           image_file_name,
     }
   }
 
+  for(i = 0 ; i < height ; i ++){
+    for(j = 0 ; j < width ; j ++){
+      float  flow_x     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j];
+      float  flow_y     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j + 1];
+      float  ofs        = sqrtf(flow_x * flow_x + flow_y * flow_y);
+      unsigned int  ofs_i = (unsigned int)ofs;
+      if(ofs_i > 255){
+        ofs_i = 255;
+      }
+      unsigned int color = kColors[0];
+      if(flow_x >= 0.0f && flow_y >= 0.0f){
+        color = ofs_i;
+      }else if(flow_x >= 0.0f && flow_y < 0.0f){
+        color = ofs_i << 8;
+      }else if(flow_x < 0.0f && flow_y >= 0.0f){
+        color = ofs_i << 16;
+      }else{
+        color = (ofs_i << 16) | ofs_i;
+      }
+      ((unsigned int*)flow_image)[i * (flow_line_size >> 2) + j] = color;
+    }
+  }
+
   int color_idx = 0;
   srand(0);
   for(i = 32 ; i < height ; i += 8){
@@ -165,7 +192,7 @@ int draw_dof_match(char const*           image_file_name,
       float  flow_x     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j];
       float  flow_y     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j + 1];
       float  ofs        = sqrtf(flow_x * flow_x + flow_y * flow_y);
-      if(ofs < 16.0f){
+      if(ofs < 8.0f){
         continue;
       }
       //float  flow_score = flow_vec[i * (dof_map->line_size >> 2) + 4 * j + 2];
@@ -187,13 +214,24 @@ int draw_dof_match(char const*           image_file_name,
                       stop, 
                       kColors[color_idx], 1);
     }
-    break;
+    if(i > 16){
+      break;
+    }
   }
-  SaveBMP(image_file_name,
+  SaveBMP(match_file_name,
           match_image, 
           match_width, 
           match_height, 
           match_line_size, 
           32,
           100);
+  SaveBMP(flow_file_name,
+          flow_image, 
+          width, 
+          height, 
+          flow_line_size, 
+          32,
+          100);
+  free_mem_align(match_image);
+  free_mem_align(flow_image);
 }

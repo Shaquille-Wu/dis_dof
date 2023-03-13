@@ -11,7 +11,7 @@
 
 #define DEBUG_IMG_PREFIX    "/home/icework/adas_alg_ref/dof_dis/data/output"
 
-#define MAX_F32(x, y)    (x) < (y) ? (y) : (x)
+#define MAX_F32(x, y)    ((x) < (y) ? (y) : (x))
 
 #define DET_EPS 0.001F
 
@@ -155,7 +155,7 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
                                         DIS_PYRAMID*        grad_xy_integral_pyramid){
   unsigned int integral_pad                = 2;
   unsigned int expected_work_buf_line_size = (((grad_xy_pyramid->width[0] + 2 * integral_pad) * 8 + 15) >> 4) << 4;   
-  unsigned int expected_work_buf_size      = expected_work_buf_line_size * (grad_xy_pyramid->height[0] + integral_pad);
+  unsigned int expected_work_buf_size      = expected_work_buf_line_size * (grad_xy_pyramid->height[0] + 2 * integral_pad);
   if(expected_work_buf_size > work_buf_size){
     return;
   }
@@ -206,6 +206,7 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
       grad_xy_integral_ptr[4 * j + 1] = cur_val_yy;
       grad_xy_integral_ptr[4 * j + 2] = cur_val_xy;
     }
+  
     cur_val_x = 0;
     cur_val_y = 0;
     cur_val_xx = 0;
@@ -241,11 +242,11 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
     for(i = 0 ; i < dst_height ; i ++){
       int top  = i * stride_size - 1;
       int btm  = i * stride_size + patch_size - 1;
-      btm      = btm > height ? height - 1 : btm;
+      btm      = btm >= height ? height - 1 : btm;
       for(j = 0 ; j < dst_width ; j ++){
         int left   = j * stride_size - 1;
         int right  = j * stride_size + patch_size - 1;
-        right      = right > width ? width - 1 : right;
+        right      = right >= width ? width - 1 : right;
         int Ax     = dst_ptr[top * dst_line_size + 2 * left];
         int Ay     = dst_ptr[top * dst_line_size + 2 * left + 1];
         int Bx     = dst_ptr[top * dst_line_size + 2 * right];
@@ -256,6 +257,28 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
         int Dy     = dst_ptr[btm * dst_line_size + 2 * right + 1];
         stride_integral[2 * j]     = Dx - Bx - Cx + Ax;
         stride_integral[2 * j + 1] = Dy - By - Cy + Ay;
+/*
+        {
+          int src_start_y = i * stride_size;
+          int src_start_x = j * stride_size;
+          int sum_x       = 0;
+          int sum_y       = 0;
+          for(int m = 0 ; m < patch_size ; m ++){
+            for(int n = 0 ; n < patch_size ; n ++){
+              int cur_src = src_ptr[(src_start_y + m) * src_line_size + (src_start_x + n)];
+              int cur_x   = (cur_src << 16) >> 16;
+              int cur_y   = cur_src >> 16;
+              sum_x      += cur_x;
+              sum_y      += cur_y;
+            }
+          }
+          if(stride_integral[2 * j] != sum_x ||
+             stride_integral[2 * j + 1] != sum_y){
+            int a = 0;
+            a ++;
+          }
+        }
+*/
       }
       stride_integral += stride_line_size;
     }
@@ -708,7 +731,7 @@ static int densification(DIS_INSTANCE*  dis,
     }
     //sparse btm-left,  only 1 cross-block
     start_y = stride_size * sparse_h;
-    end_y   = h < stride_size ? h : stride_size;
+    end_y   = h;
     end_x   = w < stride_size ? w : stride_size;
     for(ii = start_y ; ii < end_y ; ii ++){
       for(jj = 0 ; jj < end_x ; jj ++){
@@ -744,18 +767,26 @@ static int densification(DIS_INSTANCE*  dis,
         int     ref_y       = I + ii;
         float   track_y0_f  = ref_y + flow_y0;
         float   track_y1_f  = ref_y + flow_y1;
-        int     track_y0_i  = track_y0_f < 0.0f ? (int)(track_y0_f - 1 - 0.5f) : (int)(track_y0_f + 0.5f);
-        int     track_y1_i  = track_y1_f < 0.0f ? (int)(track_y1_f - 1 - 0.5f) : (int)(track_y1_f + 0.5f);
+        int     track_y0_i  = track_y0_f < 0.0f ? (int)(track_y0_f - 1) : (int)(track_y0_f);
+        int     track_y1_i  = track_y1_f < 0.0f ? (int)(track_y1_f - 1) : (int)(track_y1_f);
+        float   v0          = track_y0_f - track_y0_i;
+        float   v1          = track_y1_f - track_y1_i;
+        track_y0_i          = track_y0_i < 0 ? 0 : track_y0_i;
+        track_y1_i          = track_y1_i < 0 ? 0 : track_y1_i;
+        track_y0_i          = track_y0_i >= h ? (h - 1) : track_y0_i;
+        track_y1_i          = track_y1_i >= h ? (h - 1) : track_y1_i;
         for(jj = 0 ; jj < stride_size ; jj ++){
           int   ref_x       = J + jj;
           float track_x0_f  = ref_x + flow_x0;
           float track_x1_f  = ref_x + flow_x1;
-          int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1 - 0.5f) : (int)(track_x0_f + 0.5f);
-          int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1 - 0.5f) : (int)(track_x1_f + 0.5f);
+          int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1) : (int)(track_x0_f);
+          int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1) : (int)(track_x1_f);
           float u0          = track_x0_f - track_x0_i;
-          float v0          = track_y0_f - track_y0_i;
           float u1          = track_x1_f - track_x1_i;
-          float v1          = track_y1_f - track_y1_i;
+          track_x0_i        = track_x0_i < 0 ? 0 : track_x0_i;
+          track_x1_i        = track_x1_i < 0 ? 0 : track_x1_i;
+          track_x0_i        = track_x0_i >= w ? (w - 1) : track_x0_i;
+          track_x1_i        = track_x1_i >= w ? (w - 1) : track_x1_i;
           float ref_val     = ref_img[ref_y * img_line_size + ref_x];
           float track_val0  = (1.0f - u0) * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i] +
                                       u0  * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i + 1] +
@@ -796,18 +827,26 @@ static int densification(DIS_INSTANCE*  dis,
           int   ref_y      = I + ii;
           float track_y0_f = ref_y + flow_y0;
           float track_y1_f = ref_y + flow_y1;
-          int   track_y0_i = track_y0_f < 0.0f ? (int)(track_y0_f - 1 - 0.5f) : (int)(track_y0_f + 0.5f);
-          int   track_y1_i = track_y1_f < 0.0f ? (int)(track_y1_f - 1 - 0.5f) : (int)(track_y1_f + 0.5f);
+          int   track_y0_i = track_y0_f < 0.0f ? (int)(track_y0_f - 1) : (int)(track_y0_f);
+          int   track_y1_i = track_y1_f < 0.0f ? (int)(track_y1_f - 1) : (int)(track_y1_f);
           float v0         = track_y0_f - track_y0_i;
           float v1         = track_y1_f - track_y1_i;
+          track_y0_i        = track_y0_i < 0 ? 0 : track_y0_i;
+          track_y1_i        = track_y1_i < 0 ? 0 : track_y1_i;
+          track_y0_i       = track_y0_i >= h ? (h - 1) : track_y0_i;
+          track_y1_i       = track_y1_i >= h ? (h - 1) : track_y1_i;
           for(jj = 0 ; jj < stride_size ; jj ++){
             int   ref_x       = J + jj;
             float track_x0_f  = ref_x + flow_x0;
             float track_x1_f  = ref_x + flow_x1;
-            int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1 - 0.5f) : (int)(track_x0_f + 0.5f);
-            int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1 - 0.5f) : (int)(track_x1_f + 0.5f);
+            int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1) : (int)(track_x0_f);
+            int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1) : (int)(track_x1_f);
             float u0          = track_x0_f - track_x0_i;
             float u1          = track_x1_f - track_x1_i;
+            track_x0_i        = track_x0_i < 0 ? 0 : track_x0_i;
+            track_x1_i        = track_x1_i < 0 ? 0 : track_x1_i;
+            track_x0_i        = track_x0_i >= w ? (w - 1) : track_x0_i;
+            track_x1_i        = track_x1_i >= w ? (w - 1) : track_x1_i;
             float ref_val     = ref_img[ref_y * img_line_size + ref_x];
             float track_val0  = (1.0f - u0) * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i] +
                                         u0  * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i + 1] +
@@ -850,18 +889,27 @@ static int densification(DIS_INSTANCE*  dis,
           int   ref_y      = I + ii;
           float track_y0_f = ref_y + flow_y0;
           float track_y1_f = ref_y + flow_y1;
-          int   track_y0_i = track_y0_f < 0.0f ? (int)(track_y0_f - 1 - 0.5f) : (int)(track_y0_f + 0.5f);
-          int   track_y1_i = track_y1_f < 0.0f ? (int)(track_y1_f - 1 - 0.5f) : (int)(track_y1_f + 0.5f);
+          int   track_y0_i = track_y0_f < 0.0f ? (int)(track_y0_f - 1) : (int)(track_y0_f);
+          int   track_y1_i = track_y1_f < 0.0f ? (int)(track_y1_f - 1) : (int)(track_y1_f);
           float v0         = track_y0_f - track_y0_i;
           float v1         = track_y1_f - track_y1_i;
+          track_y0_i       = track_y0_i < 0 ? 0 : track_y0_i;
+          track_y1_i       = track_y1_i < 0 ? 0 : track_y1_i;
+          track_y0_i       = track_y0_i >= h ? (h - 1) : track_y0_i;
+          track_y1_i       = track_y1_i >= h ? (h - 1) : track_y1_i;
+
           for(jj = 0 ; jj < end_x ; jj ++){
             int   ref_x       = J + jj;
             float track_x0_f  = ref_x + flow_x0;
             float track_x1_f  = ref_x + flow_x1;
-            int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1 - 0.5f) : (int)(track_x0_f + 0.5f);
-            int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1 - 0.5f) : (int)(track_x1_f + 0.5f);
+            int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1) : (int)(track_x0_f);
+            int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1) : (int)(track_x1_f);
             float u0          = track_x0_f - track_x0_i;
             float u1          = track_x1_f - track_x1_i;
+            track_x0_i        = track_x0_i < 0 ? 0 : track_x0_i;
+            track_x1_i        = track_x1_i < 0 ? 0 : track_x1_i;
+            track_x0_i        = track_x0_i >= w ? (w - 1) : track_x0_i;
+            track_x1_i        = track_x1_i >= w ? (w - 1) : track_x1_i;
             float ref_val     = ref_img[ref_y * img_line_size + ref_x];
             float track_val0  = (1.0f - u0) * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i] +
                                         u0  * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i + 1] +
@@ -895,26 +943,35 @@ static int densification(DIS_INSTANCE*  dis,
       end_y   = stride_size * sparse_h;
       J       = start_x;
       for(I = start_y, is = 1 ; I < end_y ; I += stride_size, is ++){
-        float flow_x0 = sparse_flow[(is - 1) * sparse_line_size];
-        float flow_y0 = sparse_flow[(is - 1) * sparse_line_size + 1];
-        float flow_x1 = sparse_flow[is       * sparse_line_size];
-        float flow_y1 = sparse_flow[is       * sparse_line_size + 1];
+        float flow_x0 = sparse_flow[(is - 1) * sparse_line_size + (sparse_w - 1) * 2];
+        float flow_y0 = sparse_flow[(is - 1) * sparse_line_size + (sparse_w - 1) * 2 + 1];
+        float flow_x1 = sparse_flow[is       * sparse_line_size + (sparse_w - 1) * 2];
+        float flow_y1 = sparse_flow[is       * sparse_line_size + (sparse_w - 1) * 2 + 1];
         for(ii = 0 ; ii < stride_size ; ii ++){
           int   ref_y      = I + ii;
           float track_y0_f = ref_y + flow_y0;
           float track_y1_f = ref_y + flow_y1;
-          int   track_y0_i = track_y0_f < 0.0f ? (int)(track_y0_f - 1 - 0.5f) : (int)(track_y0_f + 0.5f);
-          int   track_y1_i = track_y1_f < 0.0f ? (int)(track_y1_f - 1 - 0.5f) : (int)(track_y1_f + 0.5f);
+          int   track_y0_i = track_y0_f < 0.0f ? (int)(track_y0_f - 1) : (int)(track_y0_f);
+          int   track_y1_i = track_y1_f < 0.0f ? (int)(track_y1_f - 1) : (int)(track_y1_f);
           float v0         = track_y0_f - track_y0_i;
           float v1         = track_y1_f - track_y1_i;
+          track_y0_i       = track_y0_i < 0 ? 0 : track_y0_i;
+          track_y1_i       = track_y1_i < 0 ? 0 : track_y1_i;
+          track_y0_i       = track_y0_i >= h ? (h - 1) : track_y0_i;
+          track_y1_i       = track_y1_i >= h ? (h - 1) : track_y1_i;
+
           for(jj = 0 ; jj < stop_jj ; jj ++){
             int   ref_x       = J + jj;
             float track_x0_f  = ref_x + flow_x0;
             float track_x1_f  = ref_x + flow_x1;
-            int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1 - 0.5f) : (int)(track_x0_f + 0.5f);
-            int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1 - 0.5f) : (int)(track_x1_f + 0.5f);
+            int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1) : (int)(track_x0_f);
+            int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1) : (int)(track_x1_f);
             float u0          = track_x0_f - track_x0_i;
             float u1          = track_x1_f - track_x1_i;
+            track_x0_i        = track_x0_i < 0 ? 0 : track_x0_i;
+            track_x1_i        = track_x1_i < 0 ? 0 : track_x1_i;
+            track_x0_i        = track_x0_i >= w ? (w - 1) : track_x0_i;
+            track_x1_i        = track_x1_i >= w ? (w - 1) : track_x1_i;
             float ref_val     = ref_img[ref_y * img_line_size + ref_x];
             float track_val0  = (1.0f - u0) * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i] +
                                         u0  * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i + 1] +
@@ -964,28 +1021,45 @@ static int densification(DIS_INSTANCE*  dis,
         float track_y1_f  = ref_y + flow_y1;
         float track_y2_f  = ref_y + flow_y2;
         float track_y3_f  = ref_y + flow_y3;
-        int   track_y0_i  = track_y0_f < 0.0f ? (int)(track_y0_f - 1 - 0.5f) : (int)(track_y0_f + 0.5f);
-        int   track_y1_i  = track_y1_f < 0.0f ? (int)(track_y1_f - 1 - 0.5f) : (int)(track_y1_f + 0.5f);
-        int   track_y2_i  = track_y2_f < 0.0f ? (int)(track_y2_f - 1 - 0.5f) : (int)(track_y2_f + 0.5f);
-        int   track_y3_i  = track_y3_f < 0.0f ? (int)(track_y3_f - 1 - 0.5f) : (int)(track_y3_f + 0.5f);
+        int   track_y0_i  = track_y0_f < 0.0f ? (int)(track_y0_f - 1) : (int)(track_y0_f);
+        int   track_y1_i  = track_y1_f < 0.0f ? (int)(track_y1_f - 1) : (int)(track_y1_f);
+        int   track_y2_i  = track_y2_f < 0.0f ? (int)(track_y2_f - 1) : (int)(track_y2_f);
+        int   track_y3_i  = track_y3_f < 0.0f ? (int)(track_y3_f - 1) : (int)(track_y3_f);
         float v0          = track_y0_f - track_y0_i;
         float v1          = track_y1_f - track_y1_i;
         float v2          = track_y2_f - track_y2_i;
         float v3          = track_y3_f - track_y3_i;
+        track_y0_i        = track_y0_i < 0 ? 0 : track_y0_i;
+        track_y1_i        = track_y1_i < 0 ? 0 : track_y1_i;
+        track_y2_i        = track_y2_i < 0 ? 0 : track_y2_i;
+        track_y3_i        = track_y3_i < 0 ? 0 : track_y3_i;
+        track_y0_i        = track_y0_i >= h ? (h - 1) : track_y0_i;
+        track_y1_i        = track_y1_i >= h ? (h - 1) : track_y1_i;
+        track_y2_i        = track_y2_i >= h ? (h - 1) : track_y2_i;
+        track_y3_i        = track_y3_i >= h ? (h - 1) : track_y3_i;
+
         for(jj = 0 ; jj < stride_size ; jj ++){
           int   ref_x       = J + jj;
           float track_x0_f  = ref_x + flow_x0;
           float track_x1_f  = ref_x + flow_x1;
           float track_x2_f  = ref_x + flow_x2;
           float track_x3_f  = ref_x + flow_x3;
-          int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1 - 0.5f) : (int)(track_x0_f + 0.5f);
-          int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1 - 0.5f) : (int)(track_x1_f + 0.5f);
-          int   track_x2_i  = track_x2_f < 0.0f ? (int)(track_x2_f - 1 - 0.5f) : (int)(track_x2_f + 0.5f);
-          int   track_x3_i  = track_x3_f < 0.0f ? (int)(track_x3_f - 1 - 0.5f) : (int)(track_x3_f + 0.5f);
+          int   track_x0_i  = track_x0_f < 0.0f ? (int)(track_x0_f - 1) : (int)(track_x0_f);
+          int   track_x1_i  = track_x1_f < 0.0f ? (int)(track_x1_f - 1) : (int)(track_x1_f);
+          int   track_x2_i  = track_x2_f < 0.0f ? (int)(track_x2_f - 1) : (int)(track_x2_f);
+          int   track_x3_i  = track_x3_f < 0.0f ? (int)(track_x3_f - 1) : (int)(track_x3_f);
           float u0          = track_x0_f - track_x0_i;
           float u1          = track_x1_f - track_x1_i;
           float u2          = track_x2_f - track_x2_i;
           float u3          = track_x3_f - track_x3_i;
+          track_x0_i        = track_x0_i < 0 ? 0 : track_x0_i;
+          track_x1_i        = track_x1_i < 0 ? 0 : track_x1_i;
+          track_x2_i        = track_x2_i < 0 ? 0 : track_x2_i;
+          track_x3_i        = track_x3_i < 0 ? 0 : track_x3_i;
+          track_x0_i        = track_x0_i >= w ? (w - 1) : track_x0_i;
+          track_x1_i        = track_x1_i >= w ? (w - 1) : track_x1_i;
+          track_x2_i        = track_x2_i >= w ? (w - 1) : track_x2_i;
+          track_x3_i        = track_x3_i >= w ? (w - 1) : track_x3_i;
           float ref_val     = ref_img[ref_y * img_line_size + ref_x];
           float track_val0  = (1.0f - u0) * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i] +
                                       u0  * (1.0f - v0) * track_img[      track_y0_i  * img_line_size + track_x0_i + 1] +
@@ -1031,7 +1105,7 @@ static int densification(DIS_INSTANCE*  dis,
   return 0;
 }
 
-static int upsample_flow(float const* src,
+static int upsample_flow(float*       src,
                          int          src_width,
                          int          src_height,
                          int          src_line_size,
@@ -1046,16 +1120,32 @@ static int upsample_flow(float const* src,
   int             i           = 0;
   int             j           = 0;
   float*          dst_ptr0    = dst;
-  int             max_x       = ((int)((src_width - 1) / ratio_x + 0.5f));
+
+  //fill src_dense right
+  float* src_ptr = src;
+  for(i = 0 ; i < src_height ; i ++){
+    ((unsigned long long*)(src_ptr + 2 * src_width))[0] = ((unsigned long long*)(src_ptr + 2 * src_width))[-1];
+    ((unsigned long long*)(src_ptr + 2 * src_width))[1] = ((unsigned long long*)(src_ptr + 2 * src_width))[-1];
+    src_ptr += src_line_size;
+  }
+  //fill src_dense btm
+  src_ptr = src + (src_height - 1) * src_line_size;
+  for(i = 0 ; i < src_width + 2; i ++){
+    ((unsigned long long*)(src_ptr + 2 * i))[0] = 
+    ((unsigned long long*)(src_ptr + 2 * i - src_line_size))[0];
+    ((unsigned long long*)(src_ptr + 2 * i + src_line_size))[0] = 
+    ((unsigned long long*)(src_ptr + 2 * i - src_line_size))[0];
+  }
+
   for(i = 0 ; i < dst_height ; i ++){
     float        src_y_pos_f = i * ratio_y;
     int          src_y_pos   = (int)(src_y_pos_f);
     float        v           = src_y_pos_f - src_y_pos;
     float const* src_ptr0    = src + src_y_pos * src_line_size;
-    float const* src_ptr1    = src_ptr0 + (src_y_pos > (src_height - 1) ? 0 : src_line_size);
+    float const* src_ptr1    = src_ptr0 + src_line_size;
     float*       dst_ptr1    = dst_ptr0;
-    for(j = 0 ; j < max_x ; j ++){
-      float  src_x_pos_f = j * ratio_y;
+    for(j = 0 ; j < dst_width ; j ++){
+      float  src_x_pos_f = j * ratio_x;
       int    src_x_pos   = (int)(src_x_pos_f);
       float  u           = src_x_pos_f - src_x_pos;
       float  p00         = src_ptr0[2 * src_x_pos];
@@ -1078,37 +1168,13 @@ static int upsample_flow(float const* src,
       dst_ptr1[1]  = res1 * ratio_y_inv;
       dst_ptr1    += 2;
     }
-    for(; j < dst_width ; j ++){
-      float  src_x_pos_f = j * ratio_y;
-      int    src_x_pos   = (int)(src_x_pos_f);
-      float  u           = src_x_pos_f - src_x_pos;
-      float  p00         = src_ptr0[2 * src_x_pos];
-      float  p01         = src_ptr0[2 * src_x_pos + 1];
-      float  p10         = p00;
-      float  p11         = p01;
-      float  p20         = src_ptr1[2 * src_x_pos];
-      float  p21         = src_ptr1[2 * src_x_pos + 1];
-      float  p30         = p20;
-      float  p31         = p21;
-      float  res0        = (1.0f - u) * (1.0f - v) * p00 +
-                                   u  * (1.0f - v) * p10 +
-                           (1.0f - u) *         v  * p20 +
-                                   u  *         v  * p30 ;
-      float  res1        = (1.0f - u) * (1.0f - v) * p01 +
-                                   u  * (1.0f - v) * p11 +
-                           (1.0f - u) *         v  * p21 +
-                                   u  *         v  * p31 ;
-      dst_ptr1[0]  = res0 * ratio_x_inv;
-      dst_ptr1[1]  = res1 * ratio_y_inv;
-      dst_ptr1    += 2;
-    }
     dst_ptr0 += dst_line_size;
   }
 }
 
 static int upsample_flow_to_next_level(DIS_INSTANCE*  dis,
                                        unsigned int   level){
-  float const*    cur_flow  = (float const*)(dis->dense_flow_pyramid.buf[level] +
+  float*          cur_flow  = (float*)(dis->dense_flow_pyramid.buf[level] +
                   dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[level] +
                                              8 * dis->dense_flow_pyramid.pad);
   float*          next_flow = (float*)(dis->dense_flow_pyramid.buf[level - 1] +
@@ -1160,11 +1226,11 @@ int     dis_dof(void*                  dis_instance,
                      0);
   build_gray_pyramid(dis->ref_btm_resize_img,
                      dis->ref_gray_pyramid.line_size[0],
-                     1,
+                     0,
                      &(dis->ref_gray_pyramid));
   build_gray_pyramid(dis->track_btm_resize_img,
                      dis->track_gray_pyramid.line_size[0],
-                     1,
+                     0,
                      &(dis->track_gray_pyramid));
   {
     unsigned int pyr_level = dis->ref_gray_pyramid.level;

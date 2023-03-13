@@ -65,6 +65,7 @@ int main(int argc, char *argv[]){
                       &dof_map);
 
   draw_dof_match("/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output/match.bmp",
+                 "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output/flow.bmp",
                  src_gray_img_data[0],
                  src_gray_width,
                  src_gray_height,

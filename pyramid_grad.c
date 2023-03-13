@@ -3,20 +3,21 @@
 
 void  pyramid_grad_xy_iu8_os16(DIS_PYRAMID const* A,
                                DIS_PYRAMID*       B){
-  unsigned int l = 0;
+  unsigned int level  = 0;
   unsigned int levels = A->level;
   int          i = 0, j = 0;
   memset(B->mem, 0, B->total_buf_size);
-  for(l = 0 ; l < levels ; l ++){ 
-    int                   src_line_size = A->line_size[l];
-    unsigned char const*  src           = A->buf[l] + 
+  for(level = 0 ; level < levels ; level ++){ 
+    int                   src_line_size = A->line_size[level];
+    int                   dst_line_size = B->line_size[level] >> 2;
+    unsigned char const*  src           = A->buf[level] + 
                                           A->pad + 
-                                          A->pad * A->line_size[l];
-    unsigned int*         dst           = (unsigned int*)(B->buf[l] + 
+                                          A->pad * A->line_size[level];
+    unsigned int*         dst           = (unsigned int*)(B->buf[level] + 
                                            B->pad * 4 + 
-                                           B->pad * B->line_size[l]);
-    unsigned int          cur_width     = A->width[l];
-    unsigned int          cur_height    = A->height[l];
+                                           B->pad * B->line_size[level]);
+    unsigned int          cur_width     = A->width[level];
+    unsigned int          cur_height    = A->height[level];
     for(i = 0 ; i < cur_height ; i ++){
       for(j = 0 ; j < cur_width ; j ++){
         int tl   = src[j - 1 - src_line_size];
@@ -37,8 +38,8 @@ void  pyramid_grad_xy_iu8_os16(DIS_PYRAMID const* A,
         unsigned int res  = (x & 0x0000FFFF) | (y << 16);
         dst[j]   = res;
       }
-      src += A->line_size[l];
-      dst += (B->line_size[l] >> 2);
+      src += src_line_size;
+      dst += dst_line_size;
     }
   }
 }

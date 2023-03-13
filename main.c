@@ -5,6 +5,7 @@
 #include <align_mem.h>
 #include <bmp.h>
 #include "dis_implement.h"
+#include "draw_output.h"
 
 #define INPUT_IMG_PREFIX    "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/input"
 #define INPUT_IMG_CNT       6
@@ -48,7 +49,7 @@ int main(int argc, char *argv[]){
                        0);
   }
 
-  dof_map.line_size = src_gray_width * sizeof(float) * 4;
+  dof_map.line_size = src_gray_width * sizeof(float) * 2;
   dof_map.width     = src_gray_width;
   dof_map.height    = src_gray_height;
   dof_map.vector    = (float*)alloc_mem_align(dof_map.line_size * src_gray_height);
@@ -62,6 +63,16 @@ int main(int argc, char *argv[]){
                       src_gray_img_data[1], 
                       src_gray_line_size, 
                       &dof_map);
+
+  draw_dof_match("/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output/match.bmp",
+                 src_gray_img_data[0],
+                 src_gray_width,
+                 src_gray_height,
+                 src_gray_line_size,
+                 src_gray_img_data[1],
+                 src_gray_line_size,
+                 &dof_map,
+                 1);
 
   destroy_dis_instance(dis);
   free_mem_align(dof_map.vector);

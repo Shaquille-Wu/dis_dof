@@ -168,6 +168,10 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
   memset(grad_xy_integral_pyramid->mem, 
          0, 
          grad_xy_integral_pyramid->total_buf_size);
+  int*  dst_ptr       = (int*)(work_buf + 
+                               integral_pad * expected_work_buf_line_size +
+                               8 * integral_pad);
+  int   dst_line_size = expected_work_buf_line_size >> 2;   
   for(int l = 0 ; l < grad_xy_pyramid->level ; l ++){
     int                  src_line_size = grad_xy_pyramid->line_size[l] >> 2;
     unsigned int const*  src_ptr       = (unsigned int const*)(grad_xy_pyramid->buf[l] + 
@@ -175,10 +179,6 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
                                      grad_xy_pyramid->pad * 4);
     unsigned int         width         = grad_xy_pyramid->width[l];
     unsigned int         height        = grad_xy_pyramid->height[l];
-    int                  dst_line_size = ((((width + 2 * integral_pad) * 8 + 15) >> 4) << 4) >> 2;   
-    int*                 dst_ptr       = (int*)(work_buf + 
-                                                integral_pad * (dst_line_size << 2) +
-                                                8 * integral_pad);
     unsigned int         grad_xy_integral_line_size = grad_xy_integral_pyramid->line_size[l] >> 3;
     long long int*       grad_xy_integral_ptr = (long long int*)(grad_xy_integral_pyramid->buf[l] + 
                                                 grad_xy_integral_pyramid->pad * 
@@ -240,11 +240,11 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
     int   stride_line_size = grad_xy_stride_integral_pyramid->line_size[l] >> 2;
     for(i = 0 ; i < dst_height ; i ++){
       int top  = i * stride_size - 1;
-      int btm  = (i + 1) * patch_size - 1;
+      int btm  = i * stride_size + patch_size - 1;
       btm      = btm > height ? height - 1 : btm;
       for(j = 0 ; j < dst_width ; j ++){
         int left   = j * stride_size - 1;
-        int right  = (j + 1) * patch_size - 1;
+        int right  = j * stride_size + patch_size - 1;
         right      = right > width ? width - 1 : right;
         int Ax     = dst_ptr[top * dst_line_size + 2 * left];
         int Ay     = dst_ptr[top * dst_line_size + 2 * left + 1];
@@ -284,11 +284,11 @@ static void  build_hessian_inv_pyr(DIS_PYRAMID const*  grad_xy_integral_pyramid,
     int   i = 0, j = 0;
     for(i = 0 ; i < dst_height ; i ++){
       int top  = i * stride_size - 1;
-      int btm  = (i + 1) + patch_size - 1;
+      int btm  = i * stride_size + patch_size - 1;
       btm      = btm > src_height ? src_height - 1 : btm;
       for(j = 0 ; j < dst_width ; j ++){
         int left   = j * stride_size - 1;
-        int right  = (j + 1) * patch_size - 1;
+        int right  = j * stride_size + patch_size - 1;
         right      = right > src_width ? src_width - 1 : right;
         long long int Ax    = integral[top * integral_line_size + 4 * left];
         long long int Ay    = integral[top * integral_line_size + 4 * left + 1];
@@ -331,8 +331,8 @@ static float calc_patch_ssd(unsigned char const* ref,
                             int                  track_max_y){
   float track_x_f = ref_xy[0] + flow_xy[0];
   float track_y_f = ref_xy[1] + flow_xy[1];
-  int   track_x_i = track_x_f < 0.0f ? (int)(track_x_f - 1 - 0.5f) : (int)(track_x_f + 0.5f);
-  int   track_y_i = track_y_f < 0.0f ? (int)(track_y_f - 1 - 0.5f) : (int)(track_y_f + 0.5f);
+  int   track_x_i = track_x_f < 0.0f ? (int)(track_x_f - 1.0f) : (int)(track_x_f);
+  int   track_y_i = track_y_f < 0.0f ? (int)(track_y_f - 1.0f) : (int)(track_y_f);
   float u         = track_x_f - track_x_i;
   float v         = track_y_f - track_y_i;
   track_x_i       = track_x_i < -(DIS_DOF_WND_SIZE - 1) ? (DIS_DOF_WND_SIZE - 1) : track_x_i;
@@ -341,9 +341,9 @@ static float calc_patch_ssd(unsigned char const* ref,
   track_y_i       = track_y_i > track_max_y ? track_max_y : track_y_i;
 
   unsigned char const*  ref_ptr    = ref + 
-                                     ref_xy[0] * line_size + ref_xy[1];
+                                     ref_xy[1] * line_size + ref_xy[0];
   unsigned char const*  track_ptr0 = track + 
-                                    track_x_i * line_size + track_y_i;
+                                    track_y_i * line_size + track_x_i;
   unsigned char const*  track_ptr1 = track_ptr0 + 
                                     line_size;
   int    i = 0, j = 0;
@@ -386,17 +386,17 @@ static float dis_patch(int const*             ref_xy,
                        int                    track_max_y){
   float track_x_f = ref_xy[0] + flow_xy[0];
   float track_y_f = ref_xy[1] + flow_xy[1];
-  int   track_x_i = track_x_f < 0.0f ? (int)(track_x_f - 1 - 0.5f) : (int)(track_x_f + 0.5f);
-  int   track_y_i = track_y_f < 0.0f ? (int)(track_y_f - 1 - 0.5f) : (int)(track_y_f + 0.5f);
+  int   track_x_i = track_x_f < 0.0f ? (int)(track_x_f - 1.0f) : (int)(track_x_f);
+  int   track_y_i = track_y_f < 0.0f ? (int)(track_y_f - 1.0f) : (int)(track_y_f);
   float u         = track_x_f - track_x_i;
   float v         = track_y_f - track_y_i;
-  track_x_i       = track_x_i < -(DIS_DOF_WND_SIZE - 1) ? (DIS_DOF_WND_SIZE - 1) : track_x_i;
+  track_x_i       = track_x_i < -(DIS_DOF_WND_SIZE - 1) ? -(DIS_DOF_WND_SIZE - 1) : track_x_i;
   track_x_i       = track_x_i > track_max_x ? track_max_x : track_x_i;
-  track_y_i       = track_y_i < -(DIS_DOF_WND_SIZE - 1) ? (DIS_DOF_WND_SIZE - 1) : track_y_i;
+  track_y_i       = track_y_i < -(DIS_DOF_WND_SIZE - 1) ? -(DIS_DOF_WND_SIZE - 1) : track_y_i;
   track_y_i       = track_y_i > track_max_y ? track_max_y : track_y_i;
 
   unsigned char const*  track_ptr0 = track_img + 
-                                     track_x_i * img_line_size + track_y_i;
+                                     track_y_i * img_line_size + track_x_i;
   unsigned char const*  track_ptr1 = track_ptr0 + img_line_size;
   int    i = 0, j = 0;
   float  ssd  = 0.0f;
@@ -468,9 +468,9 @@ static int iterate_dis(unsigned char const*   ref_img,
   int const*            ref_grad_xy_ptr = (int const*)(ref_grad_xy + 
                                   start_xy[1] * ref_grad_xy_line_size +
                                   2 * start_xy[0]);
-  float prev_ssd = 1e20;
+  float prev_ssd   = 1e20;
   for(i = 0 ; i < iterate_num ; i ++){
-    float delta_u[2] = { 0.0f, 0.0f } ;
+    float delta_u[2] = { cur_u[0], cur_u[1] } ;
     ssd = dis_patch(start_xy,
                     delta_u,
                     ref_ptr, 
@@ -483,14 +483,13 @@ static int iterate_dis(unsigned char const*   ref_img,
                     patch_size,
                     track_max_x,
                     track_max_y);
-    float dx = invH11 * delta_u[0] + invH12 * delta_u[1];
-    float dy = invH12 * delta_u[0] + invH22 * delta_u[1];
-    cur_u[0] -= dx;
-    cur_u[1] -= dy;
-
     if (ssd >= prev_ssd)
         break;
-    prev_ssd = ssd;
+    prev_ssd  = ssd;
+    float dx  = invH11 * delta_u[0] + invH12 * delta_u[1];
+    float dy  = invH12 * delta_u[0] + invH22 * delta_u[1];
+    cur_u[0] -= dx;
+    cur_u[1] -= dy;
   }
 
   float dx   = cur_u[0] - patch_stride[0];
@@ -1032,45 +1031,41 @@ static int densification(DIS_INSTANCE*  dis,
   return 0;
 }
 
-static int upsample_flow_to_next_level(DIS_INSTANCE*  dis,
-                                       unsigned int   level){
-  float const*    cur_flow  = (float const*)(dis->dense_flow_pyramid.buf[level] +
-                  dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[level] +
-                                             8 * dis->dense_flow_pyramid.pad);
-  float*          next_flow = (float*)(dis->dense_flow_pyramid.buf[level - 1] +
-                  dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[level - 1] +
-                                             8 * dis->dense_flow_pyramid.pad);
-  int             cur_w     = dis->dense_flow_pyramid.width[level];
-  int             cur_h     = dis->dense_flow_pyramid.height[level];
-  int             next_w    = dis->dense_flow_pyramid.width[level - 1];
-  int             next_h    = dis->dense_flow_pyramid.height[level - 1];
-  int             cur_line_size  = dis->dense_flow_pyramid.line_size[level] >> 2;
-  int             next_line_size = dis->dense_flow_pyramid.line_size[level - 1] >> 2;
-  float           ratio_x    = (float)cur_w / (float)next_w;
-  float           ratio_y    = (float)cur_h / (float)next_h;
-  int             i          = 0;
-  int             j          = 0;
-  float*          next_ptr0  = next_flow;
-  int             max_x      = ((int)((cur_w - 1) / ratio_x + 0.5f));
-  for(i = 0 ; i < next_h ; i ++){
-    float        cur_y_pos_f = i * ratio_y;
-    int          cur_y_pos   = (int)(cur_y_pos_f);
-    float        v           = cur_y_pos_f - cur_y_pos;
-    float const* cur_ptr0    = cur_flow + cur_y_pos * cur_line_size;
-    float const* cur_ptr1    = cur_ptr0 + (cur_y_pos > (cur_h - 1) ? 0 : cur_line_size);
-    float*       next_ptr1   = next_ptr0;
+static int upsample_flow(float const* src,
+                         int          src_width,
+                         int          src_height,
+                         int          src_line_size,
+                         float*       dst,
+                         int          dst_width,
+                         int          dst_height,
+                         int          dst_line_size){
+  float           ratio_x     = (float)src_width / (float)dst_width;
+  float           ratio_y     = (float)src_height / (float)dst_height;
+  float           ratio_x_inv = 1.0f / ratio_x;
+  float           ratio_y_inv = 1.0f / ratio_y;
+  int             i           = 0;
+  int             j           = 0;
+  float*          dst_ptr0    = dst;
+  int             max_x       = ((int)((src_width - 1) / ratio_x + 0.5f));
+  for(i = 0 ; i < dst_height ; i ++){
+    float        src_y_pos_f = i * ratio_y;
+    int          src_y_pos   = (int)(src_y_pos_f);
+    float        v           = src_y_pos_f - src_y_pos;
+    float const* src_ptr0    = src + src_y_pos * src_line_size;
+    float const* src_ptr1    = src_ptr0 + (src_y_pos > (src_height - 1) ? 0 : src_line_size);
+    float*       dst_ptr1    = dst_ptr0;
     for(j = 0 ; j < max_x ; j ++){
-      float  cur_x_pos_f = j * ratio_y;
-      int    cur_x_pos   = (int)(cur_x_pos_f);
-      float  u           = cur_x_pos_f - cur_x_pos;
-      float  p00         = cur_ptr0[2 * cur_x_pos];
-      float  p01         = cur_ptr0[2 * cur_x_pos + 1];
-      float  p10         = cur_ptr0[2 * cur_x_pos + 2];
-      float  p11         = cur_ptr0[2 * cur_x_pos + 3];
-      float  p20         = cur_ptr1[2 * cur_x_pos];
-      float  p21         = cur_ptr1[2 * cur_x_pos + 1];
-      float  p30         = cur_ptr1[2 * cur_x_pos + 2];
-      float  p31         = cur_ptr1[2 * cur_x_pos + 3];
+      float  src_x_pos_f = j * ratio_y;
+      int    src_x_pos   = (int)(src_x_pos_f);
+      float  u           = src_x_pos_f - src_x_pos;
+      float  p00         = src_ptr0[2 * src_x_pos];
+      float  p01         = src_ptr0[2 * src_x_pos + 1];
+      float  p10         = src_ptr0[2 * src_x_pos + 2];
+      float  p11         = src_ptr0[2 * src_x_pos + 3];
+      float  p20         = src_ptr1[2 * src_x_pos];
+      float  p21         = src_ptr1[2 * src_x_pos + 1];
+      float  p30         = src_ptr1[2 * src_x_pos + 2];
+      float  p31         = src_ptr1[2 * src_x_pos + 3];
       float  res0        = (1.0f - u) * (1.0f - v) * p00 +
                                    u  * (1.0f - v) * p10 +
                            (1.0f - u) *         v  * p20 +
@@ -1079,20 +1074,20 @@ static int upsample_flow_to_next_level(DIS_INSTANCE*  dis,
                                    u  * (1.0f - v) * p11 +
                            (1.0f - u) *         v  * p21 +
                                    u  *         v  * p31 ;
-      next_ptr1[0]  = res0;
-      next_ptr1[1]  = res1;
-      next_ptr1    += 2;
+      dst_ptr1[0]  = res0 * ratio_x_inv;
+      dst_ptr1[1]  = res1 * ratio_y_inv;
+      dst_ptr1    += 2;
     }
-    for(; j < next_w ; j ++){
-      float  cur_x_pos_f = j * ratio_y;
-      int    cur_x_pos   = (int)(cur_x_pos_f);
-      float  u           = cur_x_pos_f - cur_x_pos;
-      float  p00         = cur_ptr0[2 * cur_x_pos];
-      float  p01         = cur_ptr0[2 * cur_x_pos + 1];
+    for(; j < dst_width ; j ++){
+      float  src_x_pos_f = j * ratio_y;
+      int    src_x_pos   = (int)(src_x_pos_f);
+      float  u           = src_x_pos_f - src_x_pos;
+      float  p00         = src_ptr0[2 * src_x_pos];
+      float  p01         = src_ptr0[2 * src_x_pos + 1];
       float  p10         = p00;
       float  p11         = p01;
-      float  p20         = cur_ptr1[2 * cur_x_pos];
-      float  p21         = cur_ptr1[2 * cur_x_pos + 1];
+      float  p20         = src_ptr1[2 * src_x_pos];
+      float  p21         = src_ptr1[2 * src_x_pos + 1];
       float  p30         = p20;
       float  p31         = p21;
       float  res0        = (1.0f - u) * (1.0f - v) * p00 +
@@ -1103,12 +1098,36 @@ static int upsample_flow_to_next_level(DIS_INSTANCE*  dis,
                                    u  * (1.0f - v) * p11 +
                            (1.0f - u) *         v  * p21 +
                                    u  *         v  * p31 ;
-      next_ptr1[0]  = res0;
-      next_ptr1[1]  = res1;
-      next_ptr1    += 2;
+      dst_ptr1[0]  = res0 * ratio_x_inv;
+      dst_ptr1[1]  = res1 * ratio_y_inv;
+      dst_ptr1    += 2;
     }
-    next_ptr0 += next_line_size;
+    dst_ptr0 += dst_line_size;
   }
+}
+
+static int upsample_flow_to_next_level(DIS_INSTANCE*  dis,
+                                       unsigned int   level){
+  float const*    cur_flow  = (float const*)(dis->dense_flow_pyramid.buf[level] +
+                  dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[level] +
+                                             8 * dis->dense_flow_pyramid.pad);
+  float*          next_flow = (float*)(dis->dense_flow_pyramid.buf[level - 1] +
+                  dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[level - 1] +
+                                             8 * dis->dense_flow_pyramid.pad);
+  int             cur_w          = dis->dense_flow_pyramid.width[level];
+  int             cur_h          = dis->dense_flow_pyramid.height[level];
+  int             next_w         = dis->dense_flow_pyramid.width[level - 1];
+  int             next_h         = dis->dense_flow_pyramid.height[level - 1];
+  int             cur_line_size  = dis->dense_flow_pyramid.line_size[level] >> 2;
+  int             next_line_size = dis->dense_flow_pyramid.line_size[level - 1] >> 2;
+  upsample_flow(cur_flow, 
+                cur_w, 
+                cur_h, 
+                cur_line_size, 
+                next_flow, 
+                next_w, 
+                next_h, 
+                next_line_size);
 }
 
 int     dis_dof(void*                  dis_instance, 
@@ -1206,6 +1225,17 @@ int     dis_dof(void*                  dis_instance,
       upsample_flow_to_next_level(dis, cur_level);
     }
   }
+
+  upsample_flow((float*)(dis->dense_flow_pyramid.buf[0] + 
+                dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[0] +
+                dis->dense_flow_pyramid.pad * 8),
+                dis->dense_flow_pyramid.width[0],
+                dis->dense_flow_pyramid.height[0],
+                dis->dense_flow_pyramid.line_size[0] >> 2,
+                dof_map->vector,
+                dof_map->width,
+                dof_map->height,
+                dof_map->line_size >> 2);
 
   return 0;
 }

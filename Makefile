@@ -14,6 +14,7 @@ SRC= main.c \
 	 pyramid_add_sub.c \
 	 pyramid_grad.c \
 	 pyramid_integral.c \
+	 draw_output.c \
      ${COMMON_DIR}/bmp.c \
 	 ${COMMON_DIR}/align_mem.c
 

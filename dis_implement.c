@@ -395,7 +395,8 @@ static float calc_patch_ssd(unsigned char const* ref,
     track_ptr0 += line_size;
     track_ptr1 += line_size;
   }
-  return diff_sum2 - ((diff_sum * diff_sum) / (patch_size * patch_size));
+  return diff_sum2;
+  //return diff_sum2 - ((diff_sum * diff_sum) / (patch_size * patch_size));
 }
 
 static float dis_patch(int const*             ref_xy,
@@ -459,7 +460,10 @@ static float dis_patch(int const*             ref_xy,
   float n    = (patch_size * patch_size);
   flow_xy[0] = sum_x_mul - ((diff_sum * grad_sum_x) / n);
   flow_xy[1] = sum_y_mul - ((diff_sum * grad_sum_y) / n);
-  return diff_sum2 - ((diff_sum * diff_sum) / n);
+  //flow_xy[0] = sum_x_mul;
+  //flow_xy[1] = sum_y_mul;
+  return diff_sum2;
+  //return diff_sum2 - ((diff_sum * diff_sum) / n);
 }
 
 static int iterate_dis(unsigned char const*   ref_img,

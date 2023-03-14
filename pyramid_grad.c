@@ -13,9 +13,10 @@ void  pyramid_grad_xy_iu8_os16(DIS_PYRAMID const* A,
     unsigned char const*  src           = A->buf[level] + 
                                           A->pad + 
                                           A->pad * A->line_size[level];
-    unsigned int*         dst           = (unsigned int*)(B->buf[level] + 
+    int*                  dst           = (int*)(B->buf[level] + 
                                            B->pad * 4 + 
                                            B->pad * B->line_size[level]);
+    int*                  dst_ptr       = dst;
     unsigned int          cur_width     = A->width[level];
     unsigned int          cur_height    = A->height[level];
     for(i = 0 ; i < cur_height ; i ++){
@@ -28,26 +29,33 @@ void  pyramid_grad_xy_iu8_os16(DIS_PYRAMID const* A,
         int b    = src[j + src_line_size];
         int bl   = src[j - 1 + src_line_size];
         int l    = src[j - 1];
-#if 0
-        int x    = 3 * tr + 10 * r + 3 * br -
-                   (3 * tl + 10 * l + 3 * bl);
-        int y    = 3 * bl + 10 * b + 3 * br -
-                   (3 * tl + 10 * t + 3 * tr);
-        x        = x >> 4;
-        y        = y >> 4;
-#else
         int x    = tr + 2 * r + br -
                    (tl + 2 * l + bl);
         int y    = bl + 2 * b + br -
                    (tl + 2 * t + tr);
         x        = x >> 2;
         y        = y >> 2;
-#endif
-        unsigned int res  = (x & 0x0000FFFF) | (y << 16);
-        dst[j]   = res;
+        int res     = (x & 0x0000FFFF) | (y << 16);
+        dst_ptr[j]  = res;
       }
-      src += src_line_size;
-      dst += dst_line_size;
+      src      += src_line_size;
+      dst_ptr  += dst_line_size;
     }
+/*
+    dst_ptr = dst;
+    int* dst_ptr1 = dst_ptr + (cur_height - 1) * dst_line_size;
+    for(j = 0 ; j < cur_width ; j ++){
+      dst_ptr[j]  = dst_ptr[j]  & 0x0000FFFF;
+      dst_ptr1[j] = dst_ptr1[j] & 0x0000FFFF;
+    }
+    dst_ptr  = dst;
+    dst_ptr1 = dst + (cur_width - 1);
+    for(j = 0 ; j < cur_height ; j ++){
+      dst_ptr[0]  = dst_ptr[0]  & 0xFFFF0000;
+      dst_ptr1[0] = dst_ptr1[0] & 0xFFFF0000;
+      dst_ptr  += dst_line_size;
+      dst_ptr1 += dst_line_size;
+    }
+*/
   }
 }

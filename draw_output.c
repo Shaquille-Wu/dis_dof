@@ -187,14 +187,20 @@ int draw_dof_match(char const*           match_file_name,
 
   int color_idx = 0;
   srand(0);
-  for(i = 32 ; i < height ; i += 8){
-    for(j = 0 ; j < width ; j += 8){
+  for(i = 0 ; i < height ; i += 16){
+    for(j = 0 ; j < width ; j += 16){
       float  flow_x     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j];
       float  flow_y     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j + 1];
       float  ofs        = sqrtf(flow_x * flow_x + flow_y * flow_y);
-      if(ofs < 8.0f){
+      if(ofs < 12.0f){
         continue;
       }
+
+      if(j < 773 || j > (773 + 62) ||
+         i < 253 || i > (253 + 75)){
+        continue;
+      }
+
       //float  flow_score = flow_vec[i * (dof_map->line_size >> 2) + 4 * j + 2];
       //if(flow_score < 80.0f){
       //  continue;
@@ -213,9 +219,6 @@ int draw_dof_match(char const*           match_file_name,
                       start, 
                       stop, 
                       kColors[color_idx], 1);
-    }
-    if(i > 16){
-      break;
     }
   }
   SaveBMP(match_file_name,

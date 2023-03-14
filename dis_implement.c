@@ -174,7 +174,7 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
   int   dst_line_size = expected_work_buf_line_size >> 2;   
   for(int l = 0 ; l < grad_xy_pyramid->level ; l ++){
     int                  src_line_size = grad_xy_pyramid->line_size[l] >> 2;
-    unsigned int const*  src_ptr       = (unsigned int const*)(grad_xy_pyramid->buf[l] + 
+    int const*           src_ptr       = (int const*)(grad_xy_pyramid->buf[l] + 
                                      grad_xy_pyramid->pad * grad_xy_pyramid->line_size[l] +
                                      grad_xy_pyramid->pad * 4);
     unsigned int         width         = grad_xy_pyramid->width[l];
@@ -183,7 +183,7 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
     long long int*       grad_xy_integral_ptr = (long long int*)(grad_xy_integral_pyramid->buf[l] + 
                                                 grad_xy_integral_pyramid->pad * 
                                                 (grad_xy_integral_line_size << 3) +
-                                                32 * integral_pad);
+                                                32 * grad_xy_integral_pyramid->pad);
     int i = 0, j = 0;
     int                  cur_int    = 0;
     int                  cur_val_x  = 0;
@@ -229,8 +229,11 @@ static void  build_grad_xy_integral_pyr(DIS_PYRAMID const*  grad_xy_pyramid,
         grad_xy_integral_ptr[i * grad_xy_integral_line_size + 4 * j + 1] = ((long long int)cur_val_yy) + grad_xy_integral_ptr[(i - 1) * grad_xy_integral_line_size + 4 * j + 1];
         grad_xy_integral_ptr[i * grad_xy_integral_line_size + 4 * j + 2] = ((long long int)cur_val_xy) + grad_xy_integral_ptr[(i - 1) * grad_xy_integral_line_size + 4 * j + 2];
       }
-      cur_val_x = 0;
-      cur_val_y = 0;
+      cur_val_x  = 0;
+      cur_val_y  = 0;
+      cur_val_xx = 0;
+      cur_val_yy = 0;
+      cur_val_xy = 0;
     }
     int   dst_width        = grad_xy_stride_integral_pyramid->width[l];
     int   dst_height       = grad_xy_stride_integral_pyramid->height[l];
@@ -325,10 +328,10 @@ static void  build_hessian_inv_pyr(DIS_PYRAMID const*  grad_xy_integral_pyramid,
         long long int Dx    = integral[btm * integral_line_size + 4 * right];
         long long int Dy    = integral[btm * integral_line_size + 4 * right + 1];
         long long int Dz    = integral[btm * integral_line_size + 4 * right + 2];
-        float         Ixx   = Dx - Bx - Cx + Ax;
-        float         Iyy   = Dy - By - Cy + Ay;
-        float         Ixy   = Dz - Bz - Cz + Az;
-        float         det_h = Ixx * Iyy - Ixy * Ixy;
+        double        Ixx   = Dx - Bx - Cx + Ax;
+        double        Iyy   = Dy - By - Cy + Ay;
+        double        Ixy   = Dz - Bz - Cz + Az;
+        double        det_h = Ixx * Iyy - Ixy * Ixy;
         if(fabsf(det_h) < DET_EPS){
           hessian_inv[4 * j]     = 0.0f;
           hessian_inv[4 * j + 1] = 0.0f;
@@ -454,8 +457,8 @@ static float dis_patch(int const*             ref_xy,
     ref_grad_xy += ref_grad_xy_line_size;
   }
   float n    = (patch_size * patch_size);
-  flow_xy[0] = sum_x_mul - diff_sum * grad_sum_x / n;
-  flow_xy[1] = sum_y_mul - diff_sum * grad_sum_y / n;
+  flow_xy[0] = sum_x_mul - ((diff_sum * grad_sum_x) / n);
+  flow_xy[1] = sum_y_mul - ((diff_sum * grad_sum_y) / n);
   return diff_sum2 - ((diff_sum * diff_sum) / n);
 }
 
@@ -490,7 +493,7 @@ static int iterate_dis(unsigned char const*   ref_img,
                                   start_xy[0];
   int const*            ref_grad_xy_ptr = (int const*)(ref_grad_xy + 
                                   start_xy[1] * ref_grad_xy_line_size +
-                                  2 * start_xy[0]);
+                                  start_xy[0]);
   float prev_ssd   = 1e20;
   for(i = 0 ; i < iterate_num ; i ++){
     float delta_u[2] = { cur_u[0], cur_u[1] } ;
@@ -506,21 +509,21 @@ static int iterate_dis(unsigned char const*   ref_img,
                     patch_size,
                     track_max_x,
                     track_max_y);
-    if (ssd >= prev_ssd)
-        break;
-    prev_ssd  = ssd;
     float dx  = invH11 * delta_u[0] + invH12 * delta_u[1];
     float dy  = invH12 * delta_u[0] + invH22 * delta_u[1];
     cur_u[0] -= dx;
     cur_u[1] -= dy;
+    if (ssd >= prev_ssd)
+        break;
+    prev_ssd  = ssd;
   }
 
   float dx   = cur_u[0] - patch_stride[0];
   float dy   = cur_u[1] - patch_stride[1];
   float dist = dx * dx + dy * dy;
   if (dist <= (patch_size * patch_size)){
-      patch_stride[0] = cur_u[0];
-      patch_stride[1] = cur_u[1];
+    patch_stride[0] = cur_u[0];
+    patch_stride[1] = cur_u[1];
   }
 
   return 0;

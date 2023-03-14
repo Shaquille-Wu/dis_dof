@@ -5,6 +5,7 @@ CV_PREPROC_INSTALL_DIR=${TOP_PATH}/../build/Release/x86_64/cv_preproc/install
 INC_DIR=./include
 COMMON_DIR=./common
 CC_FLAGS  = -O0 -g -I${CV_PREPROC_INSTALL_DIR}/include -I${INC_DIR} -I${COMMON_DIR} -L${CV_PREPROC_INSTALL_DIR}/lib
+#CC_FLAGS  = -O3 -I${CV_PREPROC_INSTALL_DIR}/include -I${INC_DIR} -I${COMMON_DIR} -L${CV_PREPROC_INSTALL_DIR}/lib
 
 all: dis_dof_test
 

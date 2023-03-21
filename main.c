@@ -55,7 +55,9 @@ int main(int argc, char *argv[]){
   dof_map.vector    = (float*)alloc_mem_align(dof_map.line_size * src_gray_height);
   memset(dof_map.vector, 0, dof_map.line_size * src_gray_height);
 
-  void* dis = create_dis_instance(src_gray_width, src_gray_height);
+  void* dis = create_dis_instance(src_gray_width, 
+                                  src_gray_height,
+                                  1.0f, 1.0f, 1.0f);
 
   int   res = dis_dof(dis, 
                       src_gray_img_data[0], 

@@ -192,7 +192,7 @@ int draw_dof_match(char const*           match_file_name,
       float  flow_x     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j];
       float  flow_y     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j + 1];
       float  ofs        = sqrtf(flow_x * flow_x + flow_y * flow_y);
-      if(ofs < 16.0f){
+      if(ofs < 8.0f){
         continue;
       }
 

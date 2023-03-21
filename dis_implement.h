@@ -5,7 +5,10 @@
 #include <dis_types.h>
 
 void*   create_dis_instance(unsigned int  img_width, 
-                            unsigned int  img_height);
+                            unsigned int  img_height,
+                            float         tv_alpha,
+                            float         tv_gamma,
+                            float         tv_delta);
 
 int     destroy_dis_instance(void* dis_instance);
 

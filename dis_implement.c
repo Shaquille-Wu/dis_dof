@@ -8,6 +8,7 @@
 #include "dis_implement.h"
 #include "dis_internal_def.h"
 #include "pyramid.h"
+#include "dis_variant_refine.h"
 
 #define DEBUG_IMG_PREFIX    "/home/icework/adas_alg_ref/dof_dis/data/output"
 
@@ -16,7 +17,10 @@
 #define DET_EPS 0.001F
 
 void*   create_dis_instance(unsigned int  img_width, 
-                            unsigned int  img_height){
+                            unsigned int  img_height,
+                            float         tv_alpha,
+                            float         tv_gamma,
+                            float         tv_delta){
   
   unsigned int    total_mem_size = 0;
   unsigned int    i              = 0;
@@ -122,9 +126,52 @@ void*   create_dis_instance(unsigned int  img_width,
                            &(dis->hessian_inv_pyramid));
   total_mem_size += dis->hessian_inv_pyramid.total_buf_size;
 
-  dis->mem_size          = total_mem_size;
-  dis->patch_size        = DIS_PATCH_SIZE;
-  dis->patch_stride_size = DIS_PATCH_STRIDE;
+  unsigned int    refine_pad          = 4;
+  unsigned int    refine_line_size    = IMG_LINE_ALIGNED((btm_width + 2 * refine_pad) * 4);
+  unsigned int    refine_buf_size     = refine_line_size * (btm_height + 2 * refine_pad);
+  unsigned int    refine_uv_pad       = 2;
+  unsigned int    refine_uv_line_size = IMG_LINE_ALIGNED((btm_width + 2 * refine_uv_pad) * 8);
+  unsigned int    refine_uv_buf_size  = refine_uv_line_size * (btm_height + 2 * refine_uv_pad);
+  unsigned char*  refine_buf          = (unsigned char*)alloc_mem_align(17 * refine_buf_size +
+                                                                        3 * refine_uv_buf_size);
+  dis->refine_buf                  = refine_buf;
+  dis->shift_image                 = (float*)(dis->refine_buf);
+  dis->shift_image_mask            = (float*)(dis->refine_buf +      refine_buf_size);
+  dis->ref_track_avg               = (float*)(dis->refine_buf +  2 * refine_buf_size);
+  dis->Ix                          = (float*)(dis->refine_buf +  3 * refine_buf_size);
+  dis->Iy                          = (float*)(dis->refine_buf +  4 * refine_buf_size);
+  dis->It                          = (float*)(dis->refine_buf +  5 * refine_buf_size);
+  dis->Ixx                         = (float*)(dis->refine_buf +  6 * refine_buf_size);
+  dis->Ixy                         = (float*)(dis->refine_buf +  7 * refine_buf_size);
+  dis->Iyy                         = (float*)(dis->refine_buf +  8 * refine_buf_size);
+  dis->Ixt                         = (float*)(dis->refine_buf +  9 * refine_buf_size);
+  dis->Iyt                         = (float*)(dis->refine_buf + 10 * refine_buf_size);
+  dis->A00                         = (float*)(dis->refine_buf + 11 * refine_buf_size);
+  dis->A01                         = (float*)(dis->refine_buf + 12 * refine_buf_size);
+  dis->A11                         = (float*)(dis->refine_buf + 13 * refine_buf_size);
+  dis->b0                          = (float*)(dis->refine_buf + 14 * refine_buf_size);
+  dis->b1                          = (float*)(dis->refine_buf + 15 * refine_buf_size);
+  dis->smoothness                  = (float*)(dis->refine_buf + 16 * refine_buf_size);
+  dis->smooth_uv                   = (long long*)(dis->refine_buf + 17 * refine_buf_size);
+  dis->uv                          = (long long*)(dis->refine_buf + 
+                                                  17 * refine_buf_size +
+                                                  refine_uv_buf_size);
+  dis->dudv                        = (long long*)(dis->refine_buf + 
+                                                  17 * refine_buf_size + 
+                                                  2 * refine_uv_buf_size);
+  dis->refine_line_size            = refine_line_size >> 2;
+  dis->refine_uv_line_size         = refine_uv_line_size >> 3;
+  dis->refine_pad                  = refine_pad;
+  dis->refine_uv_pad               = refine_uv_pad;
+  total_mem_size                  += 17 * refine_buf_size + 
+                                     3 * refine_uv_buf_size;
+  dis->mem_size                    = total_mem_size;
+  dis->patch_size                  = DIS_PATCH_SIZE;
+  dis->patch_stride_size           = DIS_PATCH_STRIDE;
+  dis->tv_alpha                    = tv_alpha;
+  dis->tv_gamma                    = tv_gamma;
+  dis->tv_delta                    = tv_delta;
+  dis->sor_omega                   = 1.6;
 
   return dis;
 }
@@ -142,6 +189,10 @@ int     destroy_dis_instance(void* dis_instance){
   if(NULL != dis->ref_btm_resize_img){
     free_mem_align(dis->ref_btm_resize_img);
     dis->ref_btm_resize_img = NULL;
+  }
+  if(NULL != dis->refine_buf){
+    free_mem_align(dis->refine_buf);
+    dis->refine_buf = NULL;
   }
   return 0;
 }
@@ -1291,9 +1342,15 @@ int     dis_dof(void*                  dis_instance,
   int          cur_level              = 0;
   int          top_level              = dis->ref_gray_pyramid.level - 1;
   unsigned int kInvSearchInternalIter = 8;
+  unsigned int kVarFixedPointIter     = 6;
+  unsigned int kVarSORIter            = 4;
   for(cur_level = top_level; cur_level >= 0 ; cur_level --){
     patch_inv_search(dis, cur_level, kInvSearchInternalIter);
     densification(dis, cur_level);
+    variant_refine(dis, 
+                   cur_level, 
+                   kVarFixedPointIter,
+                   kVarSORIter);
     if(cur_level > 0){
       upsample_flow_to_next_level(dis, cur_level);
     }

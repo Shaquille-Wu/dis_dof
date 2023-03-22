@@ -503,6 +503,7 @@ static void cacl_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
   float     tv_alpha            = dis->tv_alpha;
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
+#if 1
       float  r_u   = uv[2 * (j + 1)];
       float  r_v   = uv[2 * (j + 1) + 1];
       float  b_u   = uv[2 * j           + uv_line_size];
@@ -514,6 +515,35 @@ static void cacl_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
       float  uy    = b_u - c_u;
       float  vy    = b_v - c_v;
       float  uv_norm = (ux * ux + uy * uy + vx * vx + vy * vy) + SMOOTH_EPS;
+#else
+      float  tl_u  = uv[2 * (j - 1)     - uv_line_size];
+      float  tl_v  = uv[2 * (j - 1) + 1 - uv_line_size];
+      float  t_u   = uv[2 * j           - uv_line_size];
+      float  t_v   = uv[2 * j       + 1 - uv_line_size];
+      float  tr_u  = uv[2 * (j + 1)     - uv_line_size];
+      float  tr_v  = uv[2 * (j + 1) + 1 - uv_line_size];
+      float  r_u   = uv[2 * (j + 1)];
+      float  r_v   = uv[2 * (j + 1) + 1];
+      float  br_u  = uv[2 * (j + 1)     + uv_line_size];
+      float  br_v  = uv[2 * (j + 1) + 1 + uv_line_size];
+      float  b_u   = uv[2 * j           + uv_line_size];
+      float  b_v   = uv[2 * j       + 1 + uv_line_size];
+      float  bl_u  = uv[2 * (j - 1)     + uv_line_size];
+      float  bl_v  = uv[2 * (j - 1) + 1 + uv_line_size];
+      float  l_u   = uv[2 * (j - 1)];
+      float  l_v   = uv[2 * (j - 1) + 1];
+      float  c_u   = uv[2 * j];
+      float  c_v   = uv[2 * j       + 1];
+      float  x_u   = tr_u + 2 * r_u + br_u -
+                     (tl_u + 2 * l_u + bl_u);
+      float  y_u   = bl_u + 2 * b_u + br_u -
+                     (tl_u + 2 * t_u + tr_u);
+      float  x_v   = tr_v + 2 * r_v + br_v -
+                     (tl_v + 2 * l_v + bl_v);
+      float  y_v   = bl_v + 2 * b_v + br_v -
+                     (tl_v + 2 * t_v + tr_v);
+      float  uv_norm = 0.0625f * (x_u * x_u + y_u * y_u + x_v * x_v + y_v * y_v) + SMOOTH_EPS;
+#endif
       uv_norm        = tv_alpha / sqrtf(uv_norm);
       smoothness[j]  = uv_norm;
     }
@@ -636,23 +666,6 @@ static void solve_sor(DIS_INSTANCE*   dis,
                      A01[j] * dudv[2 * j];
         b01       = b1[j] + a01;
         dudv[2 * j + 1] += omega * (b01 / a11 - dudv[2 * j + 1]);
-        if(dudv[2 * j] > 50.0f ||
-           dudv[2 * j] < -50.0f){
-          int a = 0;
-          a ++;
-        }
-        if(dudv[2 * j + 1] > 50.0f ||
-           dudv[2 * j + 1] < -50.0f){
-          int a = 0;
-          a ++;
-        }
-        if(isnan(dudv[2 * j]) ||
-           isnan(dudv[2 * j + 1]) ||
-           isinf(dudv[2 * j]) ||
-           isinf(dudv[2 * j + 1])){
-          int a = 0;
-          a ++;
-        }
       }
       dudv += (refine_uv_pad_line_size << 1);
       A00  += refine_pad_line_size;

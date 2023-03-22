@@ -87,6 +87,104 @@ static void shift_image(DIS_INSTANCE* dis, unsigned int cur_level){
   }
 }
 
+static void fill_uv_border(long long* uv,
+                           int        uv_pad,
+                           int        uv_w,
+                           int        uv_h){
+  int  w     = uv_w;
+  int  h     = uv_h;
+  int  i     = 0;
+  int  j     = 0;
+  int  refine_uv_pad_line_size = IMG_LINE_ALIGNED((w + 2 * uv_pad) * 8) >> 3;
+  long long* dst0 = uv + uv_pad;
+  long long* src0 = uv + 
+                uv_pad * refine_uv_pad_line_size +
+                uv_pad;
+  long long* dst1 = dst0 + (uv_pad + h) * refine_uv_pad_line_size;
+  long long* src1 = src0 + (h - 1) * refine_uv_pad_line_size;
+  for(i = 0 ; i < uv_pad ; i ++){
+    memcpy(dst0, src0, w * 8);
+    memcpy(dst1, src1, w * 8);
+    dst0 += refine_uv_pad_line_size;
+    dst1 += refine_uv_pad_line_size;
+  }
+  src0 = uv + 
+         uv_pad * refine_uv_pad_line_size +
+         uv_pad;
+  src1 = src0 + w - 1;
+  dst0 = uv + uv_pad * refine_uv_pad_line_size;
+  dst1 = dst0 + (uv_pad + w);
+  for(i = 0 ; i < h ; i ++){
+    for(j = 0 ; j < uv_pad ; j ++){
+      dst0[j] = src0[0];
+      dst1[j] = src1[0];
+    }
+    src0 += refine_uv_pad_line_size;
+    src1 += refine_uv_pad_line_size;
+    dst0 += refine_uv_pad_line_size;
+    dst1 += refine_uv_pad_line_size;
+  }
+  src0 = uv + 
+         uv_pad * refine_uv_pad_line_size +
+         uv_pad;
+  dst0  = src0;
+  dst0[0 - 1 - refine_uv_pad_line_size] = src0[0];
+  dst0  = src0 + w;
+  dst0[0 - refine_uv_pad_line_size]     = src0[w - 1];
+  dst0  = src0 + h * refine_uv_pad_line_size;
+  dst0[-1]                              = src0[(h - 1) * refine_uv_pad_line_size];
+  dst0[w]                               = src0[(h - 1) * refine_uv_pad_line_size + w - 1];
+}
+
+static void fill_refine_border(float*     refine,
+                               int        refine_pad,
+                               int        refine_w,
+                               int        refine_h){
+  int  w     = refine_w;
+  int  h     = refine_h;
+  int  i     = 0;
+  int  j     = 0;
+  int  refine_pad_line_size = IMG_LINE_ALIGNED((w + 2 * refine_pad) * 4) >> 2;
+  float* dst0 = refine + refine_pad;
+  float* src0 = refine + 
+                refine_pad * refine_pad_line_size +
+                refine_pad;
+  float* dst1 = dst0 + (refine_pad + h) * refine_pad_line_size;
+  float* src1 = src0 + (h - 1) * refine_pad_line_size;
+  for(i = 0 ; i < refine_pad ; i ++){
+    memcpy(dst0, src0, w * 4);
+    memcpy(dst1, src1, w * 4);
+    dst0 += refine_pad_line_size;
+    dst1 += refine_pad_line_size;
+  }
+  src0 = refine + 
+         refine_pad * refine_pad_line_size +
+         refine_pad;
+  src1 = src0 + w - 1;
+  dst0 = refine + refine_pad * refine_pad_line_size;
+  dst1 = dst0 + (refine_pad + w);
+  for(i = 0 ; i < h ; i ++){
+    for(j = 0 ; j < refine_pad ; j ++){
+      dst0[j] = src0[0];
+      dst1[j] = src1[0];
+    }
+    src0 += refine_pad_line_size;
+    src1 += refine_pad_line_size;
+    dst0 += refine_pad_line_size;
+    dst1 += refine_pad_line_size;
+  }
+  src0 = refine + 
+         refine_pad * refine_pad_line_size +
+         refine_pad;
+  dst0  = src0;
+  dst0[0 - 1 - refine_pad_line_size] = src0[0];
+  dst0  = src0 + w;
+  dst0[0 - refine_pad_line_size]     = src0[w - 1];
+  dst0  = src0 + h * refine_pad_line_size;
+  dst0[-1]                           = src0[(h - 1) * refine_pad_line_size];
+  dst0[w]                            = src0[(h - 1) * refine_pad_line_size + w - 1];
+}
+
 static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
   shift_image(dis, cur_level);
   
@@ -274,6 +372,7 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
       dst_uv   += refine_uv_pad_line_size;
     }
   }
+  fill_uv_border(dis->uv, dis->refine_uv_pad, w, h);
 }
 
 static void cacl_data_term(DIS_INSTANCE* dis, unsigned int cur_level){
@@ -309,36 +408,51 @@ static void cacl_data_term(DIS_INSTANCE* dis, unsigned int cur_level){
   float*  b0               = dis->b0;
   float*  b1               = dis->b1;
   float*  dudv             = (float*)(dis->dudv + 
-                                      dis->refine_pad * refine_uv_pad_line_size +
-                                      dis->refine_pad);
+                                      dis->refine_uv_pad * refine_uv_pad_line_size +
+                                      dis->refine_uv_pad);
   float   weight_delta     = dis->tv_delta;
   float   weight_gamma     = dis->tv_gamma;
   int     i = 0, j = 0;
+
+  memset(A00, 0, (refine_pad_line_size << 2) * h);
+  memset(A01, 0, (refine_pad_line_size << 2) * h);
+  memset(A11, 0, (refine_pad_line_size << 2) * h);
+  memset(b0,  0, (refine_line_size << 2) * h);
+  memset(b1,  0, (refine_line_size << 2) * h);
+
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
       float norm0  = Ix[j] * Ix[j] + Iy[j] * Iy[j] + DATA_NORM;
       float tmp0   = It[j] + Ix[j] * dudv[2 * j] + Iy[j] * dudv[2 * j + 1];
-      tmp0         = mask[j] * weight_delta / sqrtf((tmp0 * tmp0) / norm0 + DATA_BRI_EPS);
-      tmp0        /= norm0;
-      A00[j] += tmp0  * Ix[j] * Ix[j];
+      tmp0         = weight_delta / sqrtf((tmp0 * tmp0) / norm0 + DATA_BRI_EPS) / norm0;
+      A00[j] += tmp0  * Ix[j] * Ix[j] + DATA_NORM;
       A01[j] += tmp0  * Ix[j] * Iy[j];
-      A11[j] += tmp0  * Iy[j] * Iy[j];
+      A11[j] += tmp0  * Iy[j] * Iy[j] + DATA_NORM;
       b0[j]  -= tmp0  * It[j] * Ix[j];
-      b1[j]  -= tmp0  * It[j] * Ix[j];
+      b1[j]  -= tmp0  * It[j] * Iy[j];
 
       norm0       = Ixx[j] * Ixx[j] + Ixy[j] * Ixy[j] + DATA_NORM;
       float norm1 = Iyy[j] * Iyy[j] + Ixy[j] * Ixy[j] + DATA_NORM;
       tmp0        = Ixt[j] + Ixx[j] * dudv[2 * j] + Ixy[j] * dudv[2 * j + 1];
       float tmp1  = Iyt[j] + Ixy[j] * dudv[2 * j] + Iyy[j] * dudv[2 * j + 1];
-      tmp0        = mask[j] * weight_gamma / sqrtf(tmp0 * tmp0/norm0 + tmp1*tmp1/norm1 + DATA_GRAD_EPS);
+      tmp0        = weight_gamma / sqrtf(tmp0 * tmp0/norm0 + tmp1*tmp1/norm1 + DATA_GRAD_EPS);
       tmp0        = tmp0/norm0;
       tmp1        = tmp0/norm1;
-
       A00[j] += tmp0 * Ixx[j] * Ixx[j] + tmp1 * Ixy[j] * Ixy[j];
       A01[j] += tmp0 * Ixx[j] * Ixy[j] + tmp1 * Ixy[j] * Iyy[j];
-      A11[j] += tmp1 * Iyy[j] * Iyy[j] + tmp0 * Ixy[j] * Ixy[j];
+      A11[j] += tmp0 * Ixy[j] * Ixy[j] + tmp1 * Iyy[j] * Iyy[j];
       b0[j]  -= tmp0 * Ixx[j] * Ixt[j] + tmp1 * Ixy[j] * Iyt[j];
-      b1[j]  -= tmp1 * Iyy[j] * Iyt[j] + tmp0 * Ixy[j] * Ixt[j];
+      b1[j]  -= tmp0 * Ixy[j] * Ixt[j] + tmp1 * Iyy[j] * Iyt[j];
+
+      //tmp0          = Ixt[j] + Ixx[j] * dudv[2 * j] + Ixy[j] * dudv[2 * j + 1];
+      //float tmp1    = Iyt[j] + Ixy[j] * dudv[2 * j] + Iyy[j] * dudv[2 * j + 1];
+      //tmp0          = mask[j] * weight_gamma / sqrtf(tmp0 * tmp0 + tmp1 * tmp1 + DATA_GRAD_EPS);
+
+      //A00[j] += tmp0 * (Ixx[j] * Ixx[j] + Ixy[j] * Ixy[j]);
+      //A01[j] += tmp0 * (Ixx[j] * Ixy[j] + Ixy[j] * Iyy[j]);
+      //A11[j] += tmp0 * (Iyy[j] * Iyy[j] + Ixy[j] * Ixy[j]);
+      //b0[j]  -= tmp0 * (Ixx[j] * Ixt[j] + Ixy[j] * Iyt[j]);
+      //b1[j]  -= tmp0 * (Iyy[j] * Iyt[j] + Ixy[j] * Ixt[j]);
     }
     Ix   += refine_pad_line_size;
     Iy   += refine_pad_line_size;
@@ -355,64 +469,93 @@ static void cacl_data_term(DIS_INSTANCE* dis, unsigned int cur_level){
     b1   += refine_line_size;
     mask += refine_line_size;
   }
+
+  fill_refine_border(dis->A00, dis->refine_pad, w, h);
+  fill_refine_border(dis->A01, dis->refine_pad, w, h);
+  fill_refine_border(dis->A11, dis->refine_pad, w, h);
 }
 
 static void cacl_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
   int       w                   = dis->dense_flow_pyramid.width[cur_level];
   int       h                   = dis->dense_flow_pyramid.height[cur_level];
   int       refine_uv_pad_line_size = IMG_LINE_ALIGNED((w + 2 * dis->refine_uv_pad) * 8) >> 3;
+  int       refine_line_size        = IMG_LINE_ALIGNED(w * 4) >> 2;
   int       refine_pad_line_size    = IMG_LINE_ALIGNED((w + 2 * dis->refine_pad) * 4) >> 2;
   float const*  uv = (float const*)(dis->uv +
                                     dis->refine_uv_pad * refine_uv_pad_line_size +
                                     dis->refine_uv_pad);
-  float*        smooth_uv  = (float*)(dis->smooth_uv);
+  float const*  dense_uv = (float const*)(dis->dense_flow_pyramid.buf[cur_level] +
+                                    dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[cur_level] +
+                                    dis->dense_flow_pyramid.pad * 8);
+  int           dense_uv_line_size = dis->dense_flow_pyramid.line_size[cur_level] >> 2;
+  float*        smooth_uv  = (float*)(dis->smooth_uv +
+                                      dis->refine_uv_pad * refine_uv_pad_line_size +
+                                      dis->refine_uv_pad);
   float*        smoothness = dis->smoothness;
+  float*        mask       = dis->shift_image_mask;
   memset(smooth_uv,  0, (refine_uv_pad_line_size << 3) * (h + 2 * dis->refine_uv_pad));
   memset(smoothness, 0, (refine_pad_line_size << 2)    * (h + 2 * dis->refine_pad));
-
+  smoothness = (float*)(dis->smoothness +
+                        dis->refine_pad * refine_pad_line_size +
+                        dis->refine_pad);
   int       uv_line_size        = refine_uv_pad_line_size << 1;
   int       i = 0, j = 0;
   float     tv_alpha            = dis->tv_alpha;
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
-      float  tl_u  = uv[2 * (j - 1)     - uv_line_size];
-      float  tl_v  = uv[2 * (j - 1) + 1 - uv_line_size];
-      float  t_u   = uv[2 * j           - uv_line_size];
-      float  t_v   = uv[2 * j       + 1 - uv_line_size];
-      float  tr_u  = uv[2 * (j + 1)     - uv_line_size];
-      float  tr_v  = uv[2 * (j + 1) + 1 - uv_line_size];
       float  r_u   = uv[2 * (j + 1)];
       float  r_v   = uv[2 * (j + 1) + 1];
-      float  br_u  = uv[2 * (j + 1)     + uv_line_size];
-      float  br_v  = uv[2 * (j + 1) + 1 + uv_line_size];
       float  b_u   = uv[2 * j           + uv_line_size];
       float  b_v   = uv[2 * j       + 1 + uv_line_size];
-      float  bl_u  = uv[2 * (j - 1)     + uv_line_size];
-      float  bl_v  = uv[2 * (j - 1) + 1 + uv_line_size];
-      float  l_u   = uv[2 * (j - 1)];
-      float  l_v   = uv[2 * (j - 1) + 1];
       float  c_u   = uv[2 * j];
       float  c_v   = uv[2 * j       + 1];
-      float  x_u   = tr_u + 2 * r_u + br_u -
-                     (tl_u + 2 * l_u + bl_u);
-      float  y_u   = bl_u + 2 * b_u + br_u -
-                     (tl_u + 2 * t_u + tr_u);
-      float  x_v   = tr_v + 2 * r_v + br_v -
-                     (tl_v + 2 * l_v + bl_v);
-      float  y_v   = bl_v + 2 * b_v + br_v -
-                     (tl_v + 2 * t_v + tr_v);
-      float  uv_norm = 0.0625f * (x_u * x_u + y_u * y_u + x_v * x_v + y_v * y_v) + SMOOTH_EPS;
+      float  ux    = r_u - c_u;
+      float  vx    = r_v - c_v;
+      float  uy    = b_u - c_u;
+      float  vy    = b_v - c_v;
+      float  uv_norm = (ux * ux + uy * uy + vx * vx + vy * vy) + SMOOTH_EPS;
       uv_norm        = tv_alpha / sqrtf(uv_norm);
-      float  div_u   = tl_u + t_u + tr_u + l_u + r_u + bl_u + b_u + br_u;
-      float  div_v   = tl_v + t_v + tr_v + l_v + r_v + bl_v + b_v + br_v;
-      smoothness[j]        = uv_norm;
-      smooth_uv[2 * j]     = uv_norm * (div_u - 8.0f * c_u) * 0.5f;
-      smooth_uv[2 * j + 1] = uv_norm * (div_v - 8.0f * c_v) * 0.5f;
+      smoothness[j]  = uv_norm;
+    }
+    for(j = 0 ; j < w ; j ++){
+      float  r_u   = dense_uv[2 * (j + 1)];
+      float  r_v   = dense_uv[2 * (j + 1) + 1];
+      float  c_u   = dense_uv[2 * j];
+      float  c_v   = dense_uv[2 * j       + 1];
+      float  ux    = smoothness[j] * (r_u - c_u);
+      float  vx    = smoothness[j] * (r_v - c_v);
+      smooth_uv[2 * j]     += ux;
+      smooth_uv[2 * j + 1] += vx;
+      smooth_uv[2 * j + 2] -= ux;
+      smooth_uv[2 * j + 3] -= vx;
     }
     smooth_uv  += uv_line_size;
     uv         += uv_line_size;
     smoothness += refine_pad_line_size;
+    mask       += refine_line_size;
+    dense_uv   += dense_uv_line_size;
   }
+  smooth_uv    -= h * uv_line_size;
+  smoothness   -= h * refine_pad_line_size;
+  dense_uv     -= h * dense_uv_line_size;
+  for(i = 0 ; i < h ; i ++){
+    for(j = 0 ; j < w ; j ++){
+      float  b_u            = dense_uv[2 * j     + dense_uv_line_size];
+      float  b_v            = dense_uv[2 * j + 1 + dense_uv_line_size];
+      float  c_u            = dense_uv[2 * j];
+      float  c_v            = dense_uv[2 * j + 1];
+      float  uy             = smoothness[j] * (b_u - c_u);
+      float  vy             = smoothness[j] * (b_v - c_v);
+      smooth_uv[2 * j]     += uy;
+      smooth_uv[2 * j + 1] += vy;
+      smooth_uv[2 * j     + uv_line_size] -= uy;
+      smooth_uv[2 * j + 1 + uv_line_size] -= vy;
+    }
+    smooth_uv  += uv_line_size;
+    smoothness += refine_pad_line_size;
+    dense_uv   += dense_uv_line_size;
+  }
+  fill_refine_border(dis->smoothness, dis->refine_pad, w, h);
 }
 
 static void move_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
@@ -420,9 +563,6 @@ static void move_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
   int           h                       = dis->dense_flow_pyramid.height[cur_level];
   int           refine_uv_pad_line_size = IMG_LINE_ALIGNED((w + 2 * dis->refine_uv_pad) * 8) >> 3;
   int           refine_line_size        = IMG_LINE_ALIGNED(w * 4) >> 2;
-  float const*  uv                      = (float const*)(dis->uv +
-                                           dis->refine_uv_pad * refine_uv_pad_line_size +
-                                           dis->refine_uv_pad);
   float*        smooth_uv  = (float*)(dis->smooth_uv + 
                                       dis->refine_uv_pad * refine_uv_pad_line_size +
                                       dis->refine_uv_pad);
@@ -431,8 +571,8 @@ static void move_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
   int           i = 0, j = 0;
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
-      b0[j] = b0[j] + smooth_uv[2 * j];
-      b1[j] = b1[j] + smooth_uv[2 * j + 1];
+      b0[j] += smooth_uv[2 * j];
+      b1[j] += smooth_uv[2 * j + 1];
     }
     smooth_uv += (refine_uv_pad_line_size << 1);
     b0        += refine_line_size;
@@ -451,6 +591,9 @@ static void solve_sor(DIS_INSTANCE*   dis,
   int           refine_uv_pad_line_size = IMG_LINE_ALIGNED((w + 2 * dis->refine_uv_pad) * 8) >> 3;
   int           refine_pad_line_size    = IMG_LINE_ALIGNED((w + 2 * dis->refine_pad) * 4) >> 2;
   int           refine_line_size        = IMG_LINE_ALIGNED(w * 4) >> 2;
+  float*       dense_flow = (float*)(dis->dense_flow_pyramid.buf[cur_level] +
+                                dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[cur_level] +
+                                dis->dense_flow_pyramid.pad * 8);
   float*       dudv  = (float*)(dis->dudv +
                                 dis->refine_uv_pad * refine_uv_pad_line_size +
                                 dis->refine_uv_pad);
@@ -463,21 +606,53 @@ static void solve_sor(DIS_INSTANCE*   dis,
   float*       A11   = dis->A11 + 
                        dis->refine_pad * refine_pad_line_size +
                        dis->refine_pad;
+  float*       psi   = (dis->smoothness +
+                        dis->refine_pad * refine_pad_line_size +
+                        dis->refine_pad);
   float*       b0    = dis->b0;
   float*       b1    = dis->b1;
   float        omega = dis->sor_omega;
   for(k = 0 ; k < sor_iter ; k ++){
     for(i = 0 ; i < h ; i ++){
       for(j = 0 ; j < w ; j ++){
-        float sigma_u   = 0.0f;
-        float sigma_v   = 0.0f;
-
-        sigma_u = dudv[2 * (j - 1)] + dudv[2 * (j + 1)] + dudv[2 * j - (refine_uv_pad_line_size << 1)] +
-                  dudv[2 * j + (refine_uv_pad_line_size << 1)];
-        sigma_v = dudv[2 * (j - 1) + 1] + dudv[2 * (j + 1) + 1] + dudv[2 * j - (refine_uv_pad_line_size << 1) + 1] +
-                  dudv[2 * j + (refine_uv_pad_line_size << 1) + 1];
-        dudv[2 * j]     += omega * ((sigma_u + b0[j] - dudv[2 * j]     * A01[j]) / A00[j] - dudv[2 * j]);
-        dudv[2 * j + 1] += omega * ((sigma_v + b1[j] - dudv[2 * j + 1] * A01[j]) / A11[j] - dudv[2 * j + 1]);
+        float a00 = 0.0f;
+        float a01 = 0.0f;
+        float a11 = 0.0f;
+        float b00 = 0.0f;
+        float b01 = 0.0f;
+        a00       = (A00[j] + 4.0f * psi[j]);
+        a01       = (dudv[2 * (j - 1)] * psi[j] +
+                     dudv[2 * (j + 1)] * psi[j] +
+                     dudv[2 * j - (refine_uv_pad_line_size << 1)] * psi[j] +
+                     dudv[2 * j + (refine_uv_pad_line_size << 1)] * psi[j]) -
+                     A01[j] * dudv[2 * j + 1];
+        b00       = b0[j]  + a01;
+        dudv[2 * j]     += omega * (b00 / a00 - dudv[2 * j]);
+        a11       = (A11[j] + 4.0f * psi[j]);
+        a01       = (dudv[2 * (j - 1) + 1] * psi[j] +
+                     dudv[2 * (j + 1) + 1] * psi[j] +
+                     dudv[2 * j - (refine_uv_pad_line_size << 1) + 1] * psi[j] +
+                     dudv[2 * j + (refine_uv_pad_line_size << 1) + 1] * psi[j]) -
+                     A01[j] * dudv[2 * j];
+        b01       = b1[j] + a01;
+        dudv[2 * j + 1] += omega * (b01 / a11 - dudv[2 * j + 1]);
+        if(dudv[2 * j] > 50.0f ||
+           dudv[2 * j] < -50.0f){
+          int a = 0;
+          a ++;
+        }
+        if(dudv[2 * j + 1] > 50.0f ||
+           dudv[2 * j + 1] < -50.0f){
+          int a = 0;
+          a ++;
+        }
+        if(isnan(dudv[2 * j]) ||
+           isnan(dudv[2 * j + 1]) ||
+           isinf(dudv[2 * j]) ||
+           isinf(dudv[2 * j + 1])){
+          int a = 0;
+          a ++;
+        }
       }
       dudv += (refine_uv_pad_line_size << 1);
       A00  += refine_pad_line_size;
@@ -485,13 +660,15 @@ static void solve_sor(DIS_INSTANCE*   dis,
       A11  += refine_pad_line_size;
       b0   += refine_line_size;
       b1   += refine_line_size;
+      psi  += refine_pad_line_size;
     }
     dudv  = dudv - (refine_uv_pad_line_size << 1) * h;
     A00   = A00  - refine_pad_line_size * h;
     A01   = A01  - refine_pad_line_size * h;
-    A01   = A01  - refine_pad_line_size * h;
+    A11   = A11  - refine_pad_line_size * h;
     b0    = b0   - refine_line_size * h;
     b1    = b1   - refine_line_size * h;
+    psi   = psi  - refine_pad_line_size * h;
   }
 }
 
@@ -502,7 +679,7 @@ static void recompute_uv(DIS_INSTANCE*   dis,
   int  w  = dis->dense_flow_pyramid.width[cur_level];
   int  h  = dis->dense_flow_pyramid.height[cur_level];
   int  refine_uv_pad_line_size = IMG_LINE_ALIGNED((w + 2 * dis->refine_uv_pad) * 8) >> 3;
-  int  dense_flow_line_size    = dis->dense_flow_pyramid.line_size[cur_level];
+  int     dense_flow_line_size = dis->dense_flow_pyramid.line_size[cur_level];
   float*  dense_flow           = (float*)(dis->dense_flow_pyramid.buf[cur_level] +
                                           dis->dense_flow_pyramid.pad * dense_flow_line_size +
                                           dis->dense_flow_pyramid.pad * 8);
@@ -518,7 +695,39 @@ static void recompute_uv(DIS_INSTANCE*   dis,
       uv[2 * j + 1] = dense_flow[2 * j + 1] + dudv[2 * j + 1];
     }
     uv         += (refine_uv_pad_line_size << 1);
+    dudv       += (refine_uv_pad_line_size << 1);
     dense_flow += (dense_flow_line_size >> 2);
+  }
+  fill_uv_border((long long*)(dis->dense_flow_pyramid.buf[cur_level]),   
+                 dis->dense_flow_pyramid.pad, w, h);
+  fill_uv_border(dis->uv,   dis->refine_uv_pad, w, h);
+  fill_uv_border(dis->dudv, dis->refine_uv_pad, w, h);
+}
+
+static void copy_back_dense_flow(DIS_INSTANCE*   dis, 
+                                 unsigned int    cur_level){
+  int  i  = 0 ;
+  int  j  = 0 ;
+  int  w  = dis->dense_flow_pyramid.width[cur_level];
+  int  h  = dis->dense_flow_pyramid.height[cur_level];
+  int  refine_uv_pad_line_size = IMG_LINE_ALIGNED(((w + 2 * dis->refine_uv_pad) * 8)) >> 3;
+  if(dis->dense_flow_pyramid.pad == dis->refine_uv_pad &&
+     dis->dense_flow_pyramid.line_size[cur_level] == refine_uv_pad_line_size * 8){
+    memcpy(dis->dense_flow_pyramid.buf[cur_level], 
+           dis->uv, 
+           (refine_uv_pad_line_size << 3) * (h + 2 * dis->refine_uv_pad));
+  }else{
+    unsigned long long*  dst_flow = (unsigned long long*)(dis->dense_flow_pyramid.buf[cur_level] +
+                                    dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[cur_level] +
+                                    dis->dense_flow_pyramid.pad * 8);
+    unsigned long long*  src_uv   = (unsigned long long*)(dis->dudv +
+                                    dis->refine_uv_pad * refine_uv_pad_line_size +
+                                    dis->refine_uv_pad);
+    for(i = 0 ; i < h ; i ++){
+      memcpy(dst_flow, src_uv, 8 * w);
+      dst_flow += (dis->dense_flow_pyramid.line_size[cur_level] >> 3);
+      src_uv   += refine_uv_pad_line_size;
+    }
   }
 }
 
@@ -536,5 +745,7 @@ int     variant_refine(DIS_INSTANCE*   dis,
     solve_sor(dis, cur_level, sor_iter);
     recompute_uv(dis, cur_level);
   }
+  copy_back_dense_flow(dis, cur_level);
+
   return 0;
 }

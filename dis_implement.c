@@ -168,9 +168,9 @@ void*   create_dis_instance(unsigned int  img_width,
   dis->mem_size                    = total_mem_size;
   dis->patch_size                  = DIS_PATCH_SIZE;
   dis->patch_stride_size           = DIS_PATCH_STRIDE;
-  dis->tv_alpha                    = tv_alpha;
-  dis->tv_gamma                    = tv_gamma;
-  dis->tv_delta                    = tv_delta;
+  dis->tv_alpha                    = tv_alpha / 2.0f;
+  dis->tv_gamma                    = tv_gamma / 2.0f;
+  dis->tv_delta                    = tv_delta / 2.0f;
   dis->sor_omega                   = 1.6;
 
   return dis;
@@ -1342,8 +1342,8 @@ int     dis_dof(void*                  dis_instance,
   int          cur_level              = 0;
   int          top_level              = dis->ref_gray_pyramid.level - 1;
   unsigned int kInvSearchInternalIter = 8;
-  unsigned int kVarFixedPointIter     = 6;
-  unsigned int kVarSORIter            = 4;
+  unsigned int kVarFixedPointIter     = 5;
+  unsigned int kVarSORIter            = 5;
   for(cur_level = top_level; cur_level >= 0 ; cur_level --){
     patch_inv_search(dis, cur_level, kInvSearchInternalIter);
     densification(dis, cur_level);

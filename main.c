@@ -57,7 +57,7 @@ int main(int argc, char *argv[]){
 
   void* dis = create_dis_instance(src_gray_width, 
                                   src_gray_height,
-                                  1.0f, 1.0f, 1.0f);
+                                  20.0f, 10.0f, 5.0f);
 
   int   res = dis_dof(dis, 
                       src_gray_img_data[0], 

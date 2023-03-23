@@ -51,14 +51,12 @@ static void shift_image(DIS_INSTANCE* dis, unsigned int cur_level){
                               shift_img_pad * (shift_img_pad_line_size >> 2) +
                               shift_img_pad;
   float* mask_img      = dis->shift_image_mask;
-  memset(dst_img, 0, shift_img_pad_line_size * (2 * shift_img_pad + h));
+  memset(dis->shift_image, 0, shift_img_pad_line_size * (2 * shift_img_pad + h));
 
   int    src_img_line_size      = dis->ref_gray_pyramid.line_size[cur_level];
   int    flow_img_line_size     = (dis->dense_flow_pyramid.line_size[cur_level] >> 2);
   int                   i             = 0;
   int                   j             = 0;
-  unsigned char const*  src_ptr0      = src_image;
-  unsigned char const*  src_ptr1      = src_image + src_img_line_size;
   shift_img_line_size = shift_img_line_size >> 2;
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
@@ -70,14 +68,20 @@ static void shift_image(DIS_INSTANCE* dis, unsigned int cur_level){
       mask_img[j]      = (float)valid;
       x_f              = (x_f < 0.0f ? 0.0f : x_f);
       y_f              = (y_f < 0.0f ? 0.0f : y_f);
-      x_f              = (x_f > ((float)(w - 1)) ? ((float)(w - 1)) : x_f);
-      y_f              = (y_f > ((float)(h - 1)) ? ((float)(h - 1)) : y_f);
-      float  u         = x_f - ((int)x_f);
-      float  v         = y_f - ((int)y_f);
-      float  res       = src_ptr0[j]     * (1.0f - u) * (1.0f - v) +
-                         src_ptr0[j + 1] *          u * (1.0f - v) +
-                         src_ptr1[j]     * (1.0f - u) *         v +
-                         src_ptr1[j + 1] *          u *         v;
+      x_f              = (x_f >= ((float)(w)) ? ((float)(w)) : x_f);
+      y_f              = (y_f >= ((float)(h)) ? ((float)(h)) : y_f);
+      int    y_i       = (int)y_f;
+      int    x_i       = (int)x_f;
+      float  u         = x_f - x_i;
+      float  v         = y_f - y_i;
+      float  d00       = src_image[     y_i  * src_img_line_size + x_i];
+      float  d01       = src_image[     y_i  * src_img_line_size + x_i + 1];
+      float  d10       = src_image[(y_i + 1) * src_img_line_size + x_i];
+      float  d11       = src_image[(y_i + 1) * src_img_line_size + x_i + 1];
+      float  res       = d00 * (1.0f - u) * (1.0f - v) +
+                         d01 *          u * (1.0f - v) +
+                         d10 * (1.0f - u) *         v  +
+                         d11 *          u *         v;
       dst_img[j]       = res;
     }
     src_image  += src_img_line_size;
@@ -261,6 +265,12 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
   Ix            -= h * refine_pad_line_size;
   Iy            -= h * refine_pad_line_size;
   It            -= h * refine_pad_line_size;
+
+  ref_track_avg += dis->refine_pad;
+  Ix            += dis->refine_pad;
+  Iy            += dis->refine_pad;
+  It            += dis->refine_pad;
+
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
       ref_track_avg[j] = 0.5f * (shift_img[j] + ref_img[j]);
@@ -273,6 +283,8 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
   }
 
   ref_track_avg -= h * refine_pad_line_size;
+  It            -= h * refine_pad_line_size;
+  //fill_refine_border(dis->ref_track_avg, dis->refine_pad, w, h);
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
       float tl   = ref_track_avg[j - 1 - refine_pad_line_size];
@@ -287,22 +299,42 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
                    (tl + 2.0f * l + bl);
       float y    = bl + 2.0f * b + br -
                    (tl + 2.0f * t + tr);
-      Ix[j]    = x * 0.25f;
-      Iy[j]    = y * 0.25f;
+      Ix[j]      = x * 0.25f;
+      Iy[j]      = y * 0.25f;
+#if 0      
       int ref_x = ((ref_Ixy[j] << 16) >> 16);
       int ref_y = (ref_Ixy[j]         >> 16);
       Ixt[j]   = Ix[j] - (float)ref_x;
       Iyt[j]   = Iy[j] - (float)ref_y;
+#else
+      tl   = It[j - 1 - refine_pad_line_size];
+      t    = It[j - refine_pad_line_size];
+      tr   = It[j + 1 - refine_pad_line_size];
+      r    = It[j + 1];
+      br   = It[j + 1 + refine_pad_line_size];
+      b    = It[j + refine_pad_line_size];
+      bl   = It[j - 1 + refine_pad_line_size];
+      l    = It[j - 1];
+      x    = tr + 2.0f * r + br -
+                   (tl + 2.0f * l + bl);
+      y    = bl + 2.0f * b + br -
+                   (tl + 2.0f * t + tr);
+      Ixt[j] = x * 0.25f;
+      Iyt[j] = y * 0.25f;
+#endif
     }
     Ix      += refine_pad_line_size;
     Iy      += refine_pad_line_size;
+    It      += refine_pad_line_size;
     Ixt     += refine_line_size;
     Iyt     += refine_line_size;
-    ref_Ixy += ref_Ixy_line_size;
   }
   Ix -= h * refine_pad_line_size;
   Iy -= h * refine_pad_line_size;
   It -= h * refine_pad_line_size;
+
+  //fill_refine_border(dis->Ix, dis->refine_pad, w, h);
+  //fill_refine_border(dis->Iy, dis->refine_pad, w, h);
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
       float tl   = Ix[j - 1 - refine_pad_line_size];
@@ -319,7 +351,7 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
       float tr_y = Iy[j + 1 - refine_pad_line_size];
       float bl_y = Iy[j - 1 + refine_pad_line_size];
       float b_y  = Iy[j + refine_pad_line_size];
-      float br_y = Ix[j + 1 + refine_pad_line_size];
+      float br_y = Iy[j + 1 + refine_pad_line_size];
       float xx   = tr + 2.0f * r + br -
                    (tl + 2.0f * l + bl);
       float xy   = bl + 2.0f * b + br -
@@ -469,10 +501,6 @@ static void cacl_data_term(DIS_INSTANCE* dis, unsigned int cur_level){
     b1   += refine_line_size;
     mask += refine_line_size;
   }
-
-  fill_refine_border(dis->A00, dis->refine_pad, w, h);
-  fill_refine_border(dis->A01, dis->refine_pad, w, h);
-  fill_refine_border(dis->A11, dis->refine_pad, w, h);
 }
 
 static void cacl_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
@@ -585,7 +613,19 @@ static void cacl_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
     smoothness += refine_pad_line_size;
     dense_uv   += dense_uv_line_size;
   }
-  fill_refine_border(dis->smoothness, dis->refine_pad, w, h);
+  /*
+  smoothness   -= refine_pad_line_size;
+  smoothness   -= dis->refine_pad;
+  memset(smoothness, 0, 2 * 4 * refine_pad_line_size);
+  smoothness = (float*)(dis->smoothness +
+                        dis->refine_pad * refine_pad_line_size +
+                        dis->refine_pad + w);
+  for(i = 0 ; i < h ; i ++){
+    smoothness[0]  = 0.0f; 
+    smoothness    += refine_pad_line_size;
+  }
+  */
+  //fill_refine_border(dis->smoothness, dis->refine_pad, w, h);
 }
 
 static void move_smooth_term(DIS_INSTANCE* dis, unsigned int cur_level){
@@ -647,25 +687,65 @@ static void solve_sor(DIS_INSTANCE*   dis,
       for(j = 0 ; j < w ; j ++){
         float a00 = 0.0f;
         float a01 = 0.0f;
-        float a11 = 0.0f;
+        float a11 = 0.0f;  
         float b00 = 0.0f;
-        float b01 = 0.0f;
-        a00       = (A00[j] + 4.0f * psi[j]);
-        a01       = (dudv[2 * (j - 1)] * psi[j] +
+        float b01 = 0.0f;    
+#if 0  
+        a00       = (A00[j] + 2.0f * psi[j] + psi[j - 1] + psi[j - refine_pad_line_size]);
+        a01       = (dudv[2 * (j - 1)] * psi[j - 1] +
                      dudv[2 * (j + 1)] * psi[j] +
-                     dudv[2 * j - (refine_uv_pad_line_size << 1)] * psi[j] +
+                     dudv[2 * j - (refine_uv_pad_line_size << 1)] * psi[j - refine_pad_line_size] +
                      dudv[2 * j + (refine_uv_pad_line_size << 1)] * psi[j]) -
                      A01[j] * dudv[2 * j + 1];
         b00       = b0[j]  + a01;
         dudv[2 * j]     += omega * (b00 / a00 - dudv[2 * j]);
-        a11       = (A11[j] + 4.0f * psi[j]);
-        a01       = (dudv[2 * (j - 1) + 1] * psi[j] +
+        a11       = (A11[j] + 2.0f * psi[j] + psi[j - 1] + psi[j - refine_pad_line_size]);
+        a01       = (dudv[2 * (j - 1) + 1] * psi[j - 1] +
                      dudv[2 * (j + 1) + 1] * psi[j] +
-                     dudv[2 * j - (refine_uv_pad_line_size << 1) + 1] * psi[j] +
+                     dudv[2 * j - (refine_uv_pad_line_size << 1) + 1] * psi[j - refine_pad_line_size] +
                      dudv[2 * j + (refine_uv_pad_line_size << 1) + 1] * psi[j]) -
                      A01[j] * dudv[2 * j];
         b01       = b1[j] + a01;
         dudv[2 * j + 1] += omega * (b01 / a11 - dudv[2 * j + 1]);
+#else
+        float sigma_u = 0.0f, sigma_v = 0.0f, coeff = 0.0f, weight = 0.0f;
+        if(j > 0)
+        {
+          weight    = psi[j - 1];
+          sigma_u  += weight * dudv[2 * (j - 1)];
+          sigma_v  += weight * dudv[2 * (j - 1) + 1];
+          coeff    += weight;
+        }
+        if(j < w - 1)
+        {
+          weight    = psi[j];
+          sigma_u  += weight * dudv[2 * (j + 1)];
+          sigma_v  += weight * dudv[2 * (j + 1) + 1];
+          coeff    += weight;
+        }
+        if(i > 0)
+        {
+          weight    = psi[j - refine_pad_line_size];
+          sigma_u  += weight * dudv[2 * j - (refine_uv_pad_line_size << 1)];
+          sigma_v  += weight * dudv[2 * j - (refine_uv_pad_line_size << 1) + 1];
+          coeff    += weight;
+        }
+        if(i < h - 1)
+        {
+          weight    = psi[j];
+          sigma_u  += weight * dudv[2 * j + (refine_uv_pad_line_size << 1)];
+          sigma_v  += weight * dudv[2 * j + (refine_uv_pad_line_size << 1) + 1];
+          coeff    += weight;
+        }
+        sigma_u         -= A01[j] * dudv[2 * j + 1];
+        a00              = A00[j] + coeff;
+        b00              = b0[j]  + sigma_u;
+        dudv[2 * j]     += omega * (b00 / a00 - dudv[2 * j]);
+        sigma_v         -= A01[j] * dudv[2 * j];
+        a11              = A11[j] + coeff;
+        b01              = b1[j]  + sigma_v;
+        dudv[2 * j + 1] += omega * (b01 / a11 - dudv[2 * j + 1]);
+#endif
       }
       dudv += (refine_uv_pad_line_size << 1);
       A00  += refine_pad_line_size;
@@ -682,6 +762,7 @@ static void solve_sor(DIS_INSTANCE*   dis,
     b0    = b0   - refine_line_size * h;
     b1    = b1   - refine_line_size * h;
     psi   = psi  - refine_pad_line_size * h;
+    //fill_uv_border(dis->dudv, dis->refine_uv_pad, w, h);
   }
 }
 
@@ -714,7 +795,7 @@ static void recompute_uv(DIS_INSTANCE*   dis,
   fill_uv_border((long long*)(dis->dense_flow_pyramid.buf[cur_level]),   
                  dis->dense_flow_pyramid.pad, w, h);
   fill_uv_border(dis->uv,   dis->refine_uv_pad, w, h);
-  fill_uv_border(dis->dudv, dis->refine_uv_pad, w, h);
+  //fill_uv_border(dis->dudv, dis->refine_uv_pad, w, h);
 }
 
 static void copy_back_dense_flow(DIS_INSTANCE*   dis, 

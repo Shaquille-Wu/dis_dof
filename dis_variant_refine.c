@@ -1,6 +1,10 @@
 #include "dis_variant_refine.h"
 #include <math.h>
 #include <string.h>
+#include <bmp.h>
+#include <align_mem.h>
+#include <stdio.h>
+#include "draw_output.h"
 
 #define  SMOOTH_EPS     1e-6f
 #define  DATA_BRI_EPS   1e-6f
@@ -22,7 +26,7 @@ static void clear_dense_flow_border(DIS_INSTANCE* dis, unsigned int cur_level){
          0, 
          dis->dense_flow_pyramid.pad * (dense_flow_line_size << 3));
   dense_flow = dense_flow +
-               dis->dense_flow_pyramid.pad * (dense_flow_line_size >> 3);
+               dis->dense_flow_pyramid.pad * dense_flow_line_size;
   unsigned long long*  dense_flow1 = dense_flow + w + dis->dense_flow_pyramid.pad;
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < dis->dense_flow_pyramid.pad ; j ++){
@@ -65,13 +69,12 @@ static void shift_image(DIS_INSTANCE* dis, unsigned int cur_level){
       float  x_f       = j + delta_x_f;
       float  y_f       = i + delta_y_f;
       int    valid     = (x_f >= 0.0f) & (x_f <= ((float)(w - 1))) & (y_f >= 0.0f) & (y_f <= ((float)(h - 1)));
-      mask_img[j]      = (float)valid;
-      x_f              = (x_f < 0.0f ? 0.0f : x_f);
-      y_f              = (y_f < 0.0f ? 0.0f : y_f);
+      x_f              = (x_f < -1.0f ? -1.0f : x_f);
+      y_f              = (y_f < -1.0f ? -1.0f : y_f);
       x_f              = (x_f >= ((float)(w)) ? ((float)(w)) : x_f);
       y_f              = (y_f >= ((float)(h)) ? ((float)(h)) : y_f);
-      int    y_i       = (int)y_f;
-      int    x_i       = (int)x_f;
+      int    y_i       = floorf(y_f);
+      int    x_i       = floorf(x_f);
       float  u         = x_f - x_i;
       float  v         = y_f - y_i;
       float  d00       = src_image[     y_i  * src_img_line_size + x_i];
@@ -84,9 +87,8 @@ static void shift_image(DIS_INSTANCE* dis, unsigned int cur_level){
                          d11 *          u *         v;
       dst_img[j]       = res;
     }
-    src_image  += src_img_line_size;
     flow_image += flow_img_line_size;
-    dst_img    += shift_img_pad_line_size;
+    dst_img    += (shift_img_pad_line_size >> 2);
     mask_img   += shift_img_line_size;
   }
 }
@@ -271,8 +273,32 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
   Iy            += dis->refine_pad;
   It            += dis->refine_pad;
 
-  for(i = 0 ; i < h ; i ++){
-    for(j = 0 ; j < w ; j ++){
+  {
+    int            cur_shift_line_size = ((w + 3) >> 2) << 2;
+    unsigned char* cur_shift_img       = (unsigned char*)alloc_mem_align(cur_shift_line_size * h);
+    for(i = 0 ; i < h ; i ++){
+      for(j = 0 ; j < w ; j ++){
+        cur_shift_img[i * cur_shift_line_size + j] = shift_img[i * refine_pad_line_size + j];
+      }
+    }
+    char           file_name[256] = { 0 };
+    sprintf(file_name, "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output/warp_img_%d.bmp", cur_level);
+    SaveBMP(file_name,
+            cur_shift_img,
+            w,
+            h,
+            cur_shift_line_size,
+            8,
+            100);
+  }
+
+  fill_refine_border(dis->shift_image, dis->refine_pad, w, h);
+  ref_img       -= ref_img_line_size;
+  shift_img     -= refine_pad_line_size;
+  ref_track_avg -= refine_pad_line_size;
+  It            -= refine_pad_line_size;
+  for(i = -1 ; i < h + 1 ; i ++){
+    for(j = -1 ; j < w + 1 ; j ++){
       ref_track_avg[j] = 0.5f * (shift_img[j] + ref_img[j]);
       It[j]            = shift_img[j] - ref_img[j];
     }
@@ -282,9 +308,8 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
     It            += refine_pad_line_size;
   }
 
-  ref_track_avg -= h * refine_pad_line_size;
-  It            -= h * refine_pad_line_size;
-  //fill_refine_border(dis->ref_track_avg, dis->refine_pad, w, h);
+  ref_track_avg -= (h - 1) * refine_pad_line_size;
+  It            -= (h - 1) * refine_pad_line_size;
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
       float tl   = ref_track_avg[j - 1 - refine_pad_line_size];
@@ -333,8 +358,6 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
   Iy -= h * refine_pad_line_size;
   It -= h * refine_pad_line_size;
 
-  //fill_refine_border(dis->Ix, dis->refine_pad, w, h);
-  //fill_refine_border(dis->Iy, dis->refine_pad, w, h);
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
       float tl   = Ix[j - 1 - refine_pad_line_size];
@@ -404,6 +427,8 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
       dst_uv   += refine_uv_pad_line_size;
     }
   }
+  fill_uv_border((long long*)(dis->dense_flow_pyramid.buf[cur_level]), 
+                 dis->dense_flow_pyramid.pad, w, h);
   fill_uv_border(dis->uv, dis->refine_uv_pad, w, h);
 }
 
@@ -762,7 +787,6 @@ static void solve_sor(DIS_INSTANCE*   dis,
     b0    = b0   - refine_line_size * h;
     b1    = b1   - refine_line_size * h;
     psi   = psi  - refine_pad_line_size * h;
-    //fill_uv_border(dis->dudv, dis->refine_uv_pad, w, h);
   }
 }
 
@@ -795,7 +819,6 @@ static void recompute_uv(DIS_INSTANCE*   dis,
   fill_uv_border((long long*)(dis->dense_flow_pyramid.buf[cur_level]),   
                  dis->dense_flow_pyramid.pad, w, h);
   fill_uv_border(dis->uv,   dis->refine_uv_pad, w, h);
-  //fill_uv_border(dis->dudv, dis->refine_uv_pad, w, h);
 }
 
 static void copy_back_dense_flow(DIS_INSTANCE*   dis, 
@@ -838,8 +861,32 @@ int     variant_refine(DIS_INSTANCE*   dis,
     move_smooth_term(dis, cur_level);
     solve_sor(dis, cur_level, sor_iter);
     recompute_uv(dis, cur_level);
+    {
+      char           file_name[256] = { 0 };
+      sprintf(file_name, "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output/refine_flow_%d_%d.bmp", cur_level, i);
+      draw_flow(file_name, 
+                dis->dense_flow_pyramid.width[cur_level],
+                dis->dense_flow_pyramid.height[cur_level],
+                (float const*)(dis->uv + 
+                dis->refine_uv_pad * (IMG_LINE_ALIGNED((dis->dense_flow_pyramid.width[cur_level] * 8 + 2 * dis->refine_uv_pad * 8)) >> 3) + 
+                dis->refine_uv_pad),
+                IMG_LINE_ALIGNED((dis->dense_flow_pyramid.width[cur_level] * 8 + 2 * 8 * dis->refine_uv_pad)),
+                20.0f);
+    }
   }
   copy_back_dense_flow(dis, cur_level);
-
+  clear_dense_flow_border(dis, cur_level);
+  {
+    char           file_name[256] = { 0 };
+    sprintf(file_name, "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output/dense_flow_%d.bmp", cur_level);
+    draw_flow(file_name, 
+              dis->dense_flow_pyramid.width[cur_level],
+              dis->dense_flow_pyramid.height[cur_level],
+              (float const*)(dis->dense_flow_pyramid.buf[cur_level] + 
+              dis->dense_flow_pyramid.pad * dis->dense_flow_pyramid.line_size[cur_level] + 
+              dis->dense_flow_pyramid.pad * 8),
+              dis->dense_flow_pyramid.line_size[cur_level],
+              20.0f);
+  }
   return 0;
 }

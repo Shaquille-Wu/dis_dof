@@ -10,7 +10,7 @@
 #include "pyramid.h"
 #include "dis_variant_refine.h"
 
-#define DEBUG_IMG_PREFIX    "/home/icework/adas_alg_ref/dof_dis/data/output"
+#define DEBUG_IMG_PREFIX    "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output"
 
 #define MAX_F32(x, y)    ((x) < (y) ? (y) : (x))
 
@@ -1309,10 +1309,10 @@ int     dis_dof(void*                  dis_instance,
     for(i = 0 ; i < pyr_level ; i ++){
       sprintf(output_file_name, "%s/%d.bmp", output_file_prefix, i);
       SaveBMP(output_file_name,
-              dis->ref_gray_pyramid.buf[i], 
-              dis->ref_gray_pyramid.width[i]  + 2 * dis->ref_gray_pyramid.pad, 
-              dis->ref_gray_pyramid.height[i] + 2 * dis->ref_gray_pyramid.pad, 
-              dis->ref_gray_pyramid.line_size[i], 
+              dis->track_gray_pyramid.buf[i], 
+              dis->track_gray_pyramid.width[i]  + 2 * dis->track_gray_pyramid.pad, 
+              dis->track_gray_pyramid.height[i] + 2 * dis->track_gray_pyramid.pad, 
+              dis->track_gray_pyramid.line_size[i], 
               8,
               100);
     }

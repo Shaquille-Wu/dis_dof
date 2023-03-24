@@ -114,7 +114,8 @@ int draw_dof_match(char const*           match_file_name,
                    unsigned char const*  track_img,
                    unsigned int          track_line_size,
                    DOF_MAP const const*  dof_map,
-                   int                   match_dir){
+                   int                   match_dir,
+                   float                 flow_color_scale){
   unsigned int    match_width     = 2 * width;
   unsigned int    match_height    = height;
   unsigned int    i = 0 , j = 0, k = 0 ;
@@ -164,8 +165,8 @@ int draw_dof_match(char const*           match_file_name,
 
   for(i = 0 ; i < height ; i ++){
     for(j = 0 ; j < width ; j ++){
-      float  flow_x     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j];
-      float  flow_y     = flow_vec[i * (dof_map->line_size >> 2) + 2 * j + 1];
+      float  flow_x     = flow_color_scale * flow_vec[i * (dof_map->line_size >> 2) + 2 * j];
+      float  flow_y     = flow_color_scale * flow_vec[i * (dof_map->line_size >> 2) + 2 * j + 1];
       float  ofs        = sqrtf(flow_x * flow_x + flow_y * flow_y);
       unsigned int  ofs_i = (unsigned int)ofs;
       if(ofs_i > 255){
@@ -236,5 +237,59 @@ int draw_dof_match(char const*           match_file_name,
           32,
           100);
   free_mem_align(match_image);
+  free_mem_align(flow_image);
+}
+
+int draw_flow(char const*           flow_file_name,
+              unsigned int          width,
+              unsigned int          height,
+              float const*          flow,
+              int                   src_line_size,
+              float                 scale){
+  unsigned int    i = 0 , j = 0, k = 0 ;
+  unsigned int    flow_line_size  = IMG_LINE_ALIGNED(4 * width);
+  unsigned char*  flow_image      = (unsigned char*)alloc_mem_align(flow_line_size * height);
+  memset(flow_image,  0, flow_line_size  * height);
+  static const unsigned int  kColors[] = {
+    0x000000FF,
+    0x0000FF00,
+    0x00FF0000,
+    0x0000FFFF,
+    0x00FF00FF,
+    0x00FFFF00
+  };
+  static const unsigned int  kColorCnt = sizeof(kColors) / sizeof(kColors[0]);
+  float const*               flow_vec  = flow;
+
+  for(i = 0 ; i < height ; i ++){
+    for(j = 0 ; j < width ; j ++){
+      float  flow_x     = scale * flow_vec[i * (src_line_size >> 2) + 2 * j];
+      float  flow_y     = scale * flow_vec[i * (src_line_size >> 2) + 2 * j + 1];
+      float  ofs        = sqrtf(flow_x * flow_x + flow_y * flow_y);
+      unsigned int  ofs_i = (unsigned int)ofs;
+      if(ofs_i > 255){
+        ofs_i = 255;
+      }
+      unsigned int color = kColors[0];
+      if(flow_x >= 0.0f && flow_y >= 0.0f){
+        color = ofs_i;
+      }else if(flow_x >= 0.0f && flow_y < 0.0f){
+        color = ofs_i << 8;
+      }else if(flow_x < 0.0f && flow_y >= 0.0f){
+        color = ofs_i << 16;
+      }else{
+        color = (ofs_i << 16) | ofs_i;
+      }
+      ((unsigned int*)flow_image)[i * (flow_line_size >> 2) + j] = color;
+    }
+  }
+
+  SaveBMP(flow_file_name,
+          flow_image, 
+          width, 
+          height, 
+          flow_line_size, 
+          32,
+          100);
   free_mem_align(flow_image);
 }

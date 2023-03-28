@@ -58,4 +58,6 @@ typedef struct tag_dis_instance{
   float             sor_omega;
 }DIS_INSTANCE, *PDIS_INSTANCE;
 
+#define DEBUG_IMG_PREFIX    "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output"
+
 #endif  //__DIS_INTERNAL_DEF_H__

@@ -76,7 +76,7 @@ int main(int argc, char *argv[]){
                  src_gray_line_size,
                  &dof_map,
                  1,
-                 5.0f);
+                 1.0f);
 
   destroy_dis_instance(dis);
   free_mem_align(dof_map.vector);

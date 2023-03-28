@@ -292,13 +292,9 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
             100);
   }
 
-  fill_refine_border(dis->shift_image, dis->refine_pad, w, h);
-  ref_img       -= ref_img_line_size;
-  shift_img     -= refine_pad_line_size;
-  ref_track_avg -= refine_pad_line_size;
-  It            -= refine_pad_line_size;
-  for(i = -1 ; i < h + 1 ; i ++){
-    for(j = -1 ; j < w + 1 ; j ++){
+  //fill_refine_border(dis->shift_image, dis->refine_pad, w, h);
+  for(i = 0 ; i < h ; i ++){
+    for(j = 0 ; j < w ; j ++){
       ref_track_avg[j] = 0.5f * (shift_img[j] + ref_img[j]);
       It[j]            = shift_img[j] - ref_img[j];
     }
@@ -308,8 +304,8 @@ static void prepare_terms(DIS_INSTANCE* dis, unsigned int cur_level){
     It            += refine_pad_line_size;
   }
 
-  ref_track_avg -= (h - 1) * refine_pad_line_size;
-  It            -= (h - 1) * refine_pad_line_size;
+  ref_track_avg -= h * refine_pad_line_size;
+  It            -= h * refine_pad_line_size;
   for(i = 0 ; i < h ; i ++){
     for(j = 0 ; j < w ; j ++){
       float tl   = ref_track_avg[j - 1 - refine_pad_line_size];
@@ -863,7 +859,7 @@ int     variant_refine(DIS_INSTANCE*   dis,
     recompute_uv(dis, cur_level);
     {
       char           file_name[256] = { 0 };
-      sprintf(file_name, "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output/refine_flow_%d_%d.bmp", cur_level, i);
+      sprintf(file_name, "%s/refine_flow_%d_%d.bmp", DEBUG_IMG_PREFIX, cur_level, i);
       draw_flow(file_name, 
                 dis->dense_flow_pyramid.width[cur_level],
                 dis->dense_flow_pyramid.height[cur_level],
@@ -878,7 +874,7 @@ int     variant_refine(DIS_INSTANCE*   dis,
   clear_dense_flow_border(dis, cur_level);
   {
     char           file_name[256] = { 0 };
-    sprintf(file_name, "/home/icework/adas_alg_ref/dis_dof_ref/dis_dof/data/output/dense_flow_%d.bmp", cur_level);
+    sprintf(file_name, "%s/dense_flow_%d.bmp", DEBUG_IMG_PREFIX, cur_level);
     draw_flow(file_name, 
               dis->dense_flow_pyramid.width[cur_level],
               dis->dense_flow_pyramid.height[cur_level],

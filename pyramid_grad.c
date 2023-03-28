@@ -41,21 +41,5 @@ void  pyramid_grad_xy_iu8_os16(DIS_PYRAMID const* A,
       src      += src_line_size;
       dst_ptr  += dst_line_size;
     }
-/*
-    dst_ptr = dst;
-    int* dst_ptr1 = dst_ptr + (cur_height - 1) * dst_line_size;
-    for(j = 0 ; j < cur_width ; j ++){
-      dst_ptr[j]  = dst_ptr[j]  & 0x0000FFFF;
-      dst_ptr1[j] = dst_ptr1[j] & 0x0000FFFF;
-    }
-    dst_ptr  = dst;
-    dst_ptr1 = dst + (cur_width - 1);
-    for(j = 0 ; j < cur_height ; j ++){
-      dst_ptr[0]  = dst_ptr[0]  & 0xFFFF0000;
-      dst_ptr1[0] = dst_ptr1[0] & 0xFFFF0000;
-      dst_ptr  += dst_line_size;
-      dst_ptr1 += dst_line_size;
-    }
-*/
   }
 }
